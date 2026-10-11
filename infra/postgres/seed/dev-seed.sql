@@ -24,10 +24,10 @@ INSERT INTO auction.auctions (
 ) VALUES
   ('00000000-0000-4000-8000-000000000201', '00000000-0000-4000-8000-000000000002',
    'Vintage film camera', 'Working 35mm rangefinder, synthetic demo listing.', 'cameras',
-   100.00, 150.00, 'USD', 'OPEN', now(), now() + interval '2 days', now() + interval '2 days', 120, 120, 10),
+   8000.00, 12000.00, 'INR', 'OPEN', now(), now() + interval '2 days', now() + interval '2 days', 120, 120, 10),
   ('00000000-0000-4000-8000-000000000202', '00000000-0000-4000-8000-000000000002',
    'Mechanical keyboard', 'Draft listing, not yet published.', 'electronics',
-   40.00, NULL, 'USD', 'DRAFT', NULL, NULL, NULL, 120, 120, 10)
+   3000.00, NULL, 'INR', 'DRAFT', NULL, NULL, NULL, 120, 120, 10)
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO search.auction_index (

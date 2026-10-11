@@ -40,7 +40,7 @@ components:
     Currency:
       type: string
       pattern: '^[A-Z]{3}$'
-      examples: ["USD"]
+      examples: ["INR"]
     Page:
       type: object
       required: [page, page_size, total]

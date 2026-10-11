@@ -16,9 +16,9 @@ the owners in Plan 7, and until then the SDD summary is binding. ADR-0009 onward
 | 0006 | Escrow sweep as a platform cron job | Accepted (SDD) | Naitik / Ayush | Plan 7 (#37) |
 | 0007 | Payment behind a port with a mock adapter | Accepted (SDD) | Jaydip | Plan 7 (#68) |
 | 0008 | Fraud dataset built before the detector | Accepted (SDD) | Harshal | Plan 7 (#58) |
-| [0009](0009-payment-provider.md) | Payment provider: Stripe or Razorpay | **Proposed** | Jaydip | Plan 1 |
+| [0009](0009-payment-provider.md) | Payment provider: Razorpay test mode, INR | **Accepted** (2026-10-10) | Jaydip | Plan 1 |
 | [0010](0010-third-party-services.md) | Push notifications and image hosting | **Proposed** | Ayush / Gaurang | Plan 1 |
-| [0011](0011-settlement-policy.md) | Settlement policy numbers (fee, window, anti-snipe) | **Proposed** | Jaydip / Sumit | Plan 1 |
+| [0011](0011-settlement-policy.md) | Settlement policy numbers (₹99 fee, window, anti-snipe) | **Accepted** (2026-10-10) | Jaydip / Sumit | Plan 1 |
 | [0012](0012-repository-and-platform-conventions.md) | Monorepo, service template, schema-per-service | **Proposed** | Ayush | Plan 1 |
 
 A Proposed ADR becomes Accepted when it's approved at the end-of-plan review, with at least two approvals on its PR.

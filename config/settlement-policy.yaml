@@ -1,19 +1,23 @@
 # Settlement policy — the fixed rules the implementation must enforce (proposal section 5).
 # Owners: Jaydip (Payment) and Sumit (Orchestration). Decision record: docs/adr/0011-settlement-policy.md
-# STATUS: Proposed. Values below are the team's starting proposal and become binding when
-# ADR-0011 is accepted at the end of Plan 1. They must be fixed BEFORE any settlement code
-# is written (SDD 1.3).
+# STATUS: binding from Plan 4. ADR-0009 chose Razorpay (test mode), so the platform settles in
+# INR; the fee moved from 2026-08-v1 (25.00 USD) to 2026-10-v1 (99.00 INR) before any order
+# was created. They must be fixed BEFORE any settlement code is written (SDD 1.3).
 #
-# The payment schema seeds payment.fee_config from these values
-# (infra/postgres/init/60-payment.sql); tests/contracts/test_settlement_policy.py keeps the
-# two in sync.
+# The payment schema seeds payment.fee_config from these values (the newest
+# infra/postgres/init/6N-payment*.sql that inserts an active row);
+# tests/contracts/test_settlement_policy.py keeps the two in sync.
 
 convenience_fee:
-  fee_version: "2026-08-v1"
-  amount: "25.00"          # flat amount per completed sale, never a percentage
-  currency: "USD"          # USD if Stripe, INR if Razorpay is chosen (ADR-0009)
+  fee_version: "2026-10-v1"
+  amount: "99.00"          # flat amount per completed sale, never a percentage
+  currency: "INR"          # Razorpay test mode (ADR-0009); every auction is listed in INR
   disclosed_before_bid: true
   charged_to_losing_bidders: false
+
+checkout:                  # ADR-0009: the winner pays through Razorpay Checkout (manual capture)
+  provider: razorpay
+  payment_window_hours: 48 # the winner must authorise payment within this; then compensation O4
 
 protection_window:
   days: 7                  # starts when the seller marks the item shipped

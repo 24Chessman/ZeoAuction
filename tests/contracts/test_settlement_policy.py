@@ -12,10 +12,11 @@ import yaml
 from .conftest import REPO_ROOT
 
 POLICY_FILE = REPO_ROOT / "config" / "settlement-policy.yaml"
-PAYMENT_SQL_FILE = REPO_ROOT / "infra" / "postgres" / "init" / "60-payment.sql"
+# 60-payment.sql creates the schema; later files (61-payment-razorpay.sql, ...) change the
+# active fee. They run in name order, so the last active row inserted is the one in force.
+PAYMENT_SQL_FILES = sorted((REPO_ROOT / "infra" / "postgres" / "init").glob("6?-payment*.sql"))
 
 POLICY = yaml.safe_load(POLICY_FILE.read_text(encoding="utf-8"))
-PAYMENT_SQL = PAYMENT_SQL_FILE.read_text(encoding="utf-8")
 
 FEE_SEED = re.compile(
     r"INSERT INTO payment\.fee_config.*?VALUES\s*"
@@ -25,10 +26,23 @@ FEE_SEED = re.compile(
 
 
 def seeded_fee_config() -> tuple[str, Decimal, str, int]:
-    match = FEE_SEED.search(PAYMENT_SQL)
-    assert match, "fee_config seed row not found in 60-payment.sql"
-    version, fee, currency, window = match.groups()
+    seeds = [match.groups() for path in PAYMENT_SQL_FILES
+             for match in FEE_SEED.finditer(path.read_text(encoding="utf-8"))]
+    assert seeds, "no active fee_config seed row in infra/postgres/init/6?-payment*.sql"
+    version, fee, currency, window = seeds[-1]
     return version, Decimal(fee), currency, int(window)
+
+
+def test_superseded_fee_versions_are_deactivated():
+    sql = "\n".join(path.read_text(encoding="utf-8") for path in PAYMENT_SQL_FILES)
+    versions = [m.group(1) for m in FEE_SEED.finditer(sql)]
+    for old in versions[:-1]:
+        assert f"SET active = false WHERE fee_version = '{old}'" in sql
+
+
+def test_checkout_window_is_positive():
+    assert POLICY["checkout"]["provider"] == "razorpay"
+    assert POLICY["checkout"]["payment_window_hours"] > 0
 
 
 def test_fee_config_seed_matches_policy():

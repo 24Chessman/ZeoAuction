@@ -6,7 +6,7 @@
   "bidder_id": "00000000-0000-4000-8000-000000000004",
   "seller_id": "00000000-0000-4000-8000-000000000002",
   "amount": "1250.00",
-  "currency": "USD",
+  "currency": "INR",
   "server_seq": 42,
   "accepted_at": "2026-08-20T10:15:30.120Z",
   "auction_closes_at": "2026-08-22T10:00:00Z",
