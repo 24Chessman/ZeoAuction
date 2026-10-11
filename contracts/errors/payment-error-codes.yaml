@@ -1,0 +1,42 @@
+# Payment and settlement error codes (Plan 4, ADR-0009). Owner: Jaydip.
+# Delivered in the uniform error envelope {code, message, details, request_id}. Platform-wide
+# codes (FORBIDDEN, NOT_FOUND, VALIDATION_ERROR, ...) live in common-error-codes.yaml.
+#
+# Versioning as for bid-rejection-codes.yaml: adding a code is a minor bump; changing a code's
+# meaning or HTTP status is breaking.
+#
+# retryable  true = retry the same request later; false = refused again until something changes.
+# services/payment-escrow/tests/test_error_codes.py checks the service raises only these codes
+# (plus the common ones).
+version: "1.0.0"
+codes:
+  - code: ORDER_NOT_PAYABLE
+    http: 409
+    retryable: false
+    details: [state]
+    condition: "Checkout was requested for an order that is no longer awaiting payment (already authorised, captured, held or cancelled)."
+  - code: PAYMENT_SIGNATURE_INVALID
+    http: 400
+    retryable: false
+    details: []
+    condition: "The Checkout handler signature does not match the order and payment, or the provider order is not this order's."
+  - code: WEBHOOK_SIGNATURE_INVALID
+    http: 400
+    retryable: false
+    details: []
+    condition: "A provider webhook failed signature verification. Nothing was recorded."
+  - code: PAYMENT_PROVIDER_UNAVAILABLE
+    http: 503
+    retryable: true
+    details: []
+    condition: "The payment provider timed out, rate-limited us or is down. Nothing moved; retry later."
+  - code: PAYMENT_PROVIDER_ERROR
+    http: 502
+    retryable: false
+    details: []
+    condition: "The payment provider refused the request definitively (for example a misconfigured test account)."
+  - code: SETTLEMENT_CONFLICT
+    http: 409
+    retryable: false
+    details: [order_id]
+    condition: "The auction already has an order for a different winning bid. An auction settles exactly once."

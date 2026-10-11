@@ -1,0 +1,291 @@
+openapi: 3.1.0
+info:
+  title: ZeoAuction Payment, Fees & Escrow API
+  version: 1.0.0
+  description: |
+    Provider: Payment & Escrow (owner: Jaydip). SDD 7.4; ADR-0009 (Razorpay test mode, INR),
+    ADR-0011 (settlement policy). **Test mode only: escrow is a simulation and no real money moves.**
+
+    Settlement forward path (docs/state-machines.md, section 2):
+    INVOICED -> (winner pays in Razorpay Checkout) AUTHORIZED -> CAPTURED -> IN_ESCROW.
+    A capture that fails transiently parks the order in AWAITING_CAPTURE_RETRY and is retried
+    with the same idempotency key; a definitive failure or an unpaid order past
+    `payment_due_at` is CANCELLED with its invoice voided.
+
+    Payment-specific error codes: contracts/errors/payment-error-codes.yaml.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+paths:
+  /fees/quote:
+    get:
+      operationId: quoteFee
+      summary: Flat convenience fee and total for a bid amount (public, AC-07)
+      security: []
+      parameters:
+        - name: bid_amount
+          in: query
+          required: true
+          schema: { $ref: 'common.v1.yaml#/components/schemas/Money' }
+      responses:
+        '200':
+          description: The quote. Identical to what the winner is invoiced (same fee_version).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FeeQuote' }
+        '422': { $ref: '#/components/responses/Error' }
+  /orders/{orderId}:
+    get:
+      operationId: getOrder
+      summary: One order with its invoice (buyer, seller or admin)
+      parameters:
+        - { $ref: '#/components/parameters/OrderId' }
+      responses:
+        '200':
+          description: The order.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /auctions/{auctionId}/order:
+    get:
+      operationId: getAuctionOrder
+      summary: The order of a settled auction (buyer, seller or admin). 404 until invoiced.
+      parameters:
+        - name: auctionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The order.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /orders/{orderId}/checkout:
+    post:
+      operationId: startCheckout
+      summary: The winner opens Razorpay Checkout for the invoice total
+      description: Idempotent. The provider order is created once and returned on every call.
+      parameters:
+        - { $ref: '#/components/parameters/OrderId' }
+      responses:
+        '200':
+          description: What the browser opens Checkout with.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Checkout' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409':
+          description: ORDER_NOT_PAYABLE, the order is no longer awaiting payment.
+          content:
+            application/json:
+              schema: { $ref: 'common.v1.yaml#/components/schemas/Error' }
+        '502': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+  /orders/{orderId}/payment:
+    post:
+      operationId: confirmPayment
+      summary: Hand back Checkout's signed result; the payment is captured into escrow
+      parameters:
+        - { $ref: '#/components/parameters/OrderId' }
+        - { $ref: 'common.v1.yaml#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PaymentConfirmation' }
+      responses:
+        '200':
+          description: >
+            The order after capture: IN_ESCROW, or AWAITING_CAPTURE_RETRY when the provider is
+            down (captured later with the same key), or CANCELLED after a definitive failure.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '400':
+          description: PAYMENT_SIGNATURE_INVALID.
+          content:
+            application/json:
+              schema: { $ref: 'common.v1.yaml#/components/schemas/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /webhooks/{provider}:
+    post:
+      operationId: providerWebhook
+      summary: Signed provider webhook (razorpay, or mock locally), FR-PAY-7
+      description: >
+        Razorpay signs the raw body with the webhook secret in X-Razorpay-Signature and names
+        the delivery in X-Razorpay-Event-Id; deliveries are de-duplicated on it.
+        `payment.authorized` (and `payment.captured`) advance the order exactly like
+        confirmPayment. Every verified delivery is answered 200 so the provider stops retrying.
+      security: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema: { type: string, enum: [razorpay, mock] }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200':
+          description: Verified.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [outcome]
+                properties:
+                  outcome: { enum: [applied, ignored, duplicate] }
+        '400':
+          description: WEBHOOK_SIGNATURE_INVALID.
+          content:
+            application/json:
+              schema: { $ref: 'common.v1.yaml#/components/schemas/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /orders/{orderId}/ledger:
+    get:
+      operationId: getOrderLedger
+      summary: The order's append-only escrow ledger rows (admin)
+      parameters:
+        - { $ref: '#/components/parameters/OrderId' }
+      responses:
+        '200':
+          description: Rows in insertion order.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/LedgerEntry' }
+        '403': { $ref: '#/components/responses/Error' }
+components:
+  securitySchemes:
+    bearerAuth: { $ref: 'common.v1.yaml#/components/securitySchemes/bearerAuth' }
+  parameters:
+    OrderId:
+      name: orderId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  responses:
+    Error:
+      description: Uniform error envelope.
+      content:
+        application/json:
+          schema: { $ref: 'common.v1.yaml#/components/schemas/Error' }
+  schemas:
+    FeeQuote:
+      type: object
+      additionalProperties: false
+      required: [bid_amount, convenience_fee, total, currency, fee_version]
+      properties:
+        bid_amount: { $ref: 'common.v1.yaml#/components/schemas/Money' }
+        convenience_fee: { $ref: 'common.v1.yaml#/components/schemas/Money' }
+        total: { $ref: 'common.v1.yaml#/components/schemas/Money' }
+        currency: { $ref: 'common.v1.yaml#/components/schemas/Currency' }
+        fee_version: { type: string, examples: ["2026-10-v1"] }
+    OrderState:
+      type: string
+      enum: [INVOICED, AUTHORIZED, AWAITING_CAPTURE_RETRY, CAPTURED, IN_ESCROW, SHIPPED,
+             DISPUTED, RELEASED, REFUNDED, CANCELLED]
+    Invoice:
+      type: object
+      additionalProperties: false
+      required: [invoice_number, bid_amount, convenience_fee, total, currency, fee_version,
+                 issued_at, voided_at]
+      properties:
+        invoice_number: { type: string, examples: ["ZA-202610-1A2B3C4D5E6F"] }
+        bid_amount: { $ref: 'common.v1.yaml#/components/schemas/Money' }
+        convenience_fee: { $ref: 'common.v1.yaml#/components/schemas/Money' }
+        total: { $ref: 'common.v1.yaml#/components/schemas/Money' }
+        currency: { $ref: 'common.v1.yaml#/components/schemas/Currency' }
+        fee_version: { type: string }
+        issued_at: { type: string, format: date-time }
+        voided_at: { type: [string, "null"], format: date-time }
+    Order:
+      type: object
+      additionalProperties: false
+      required: [order_id, auction_id, buyer_id, seller_id, winning_bid_id, state,
+                 winning_bid_amount, convenience_fee, total, currency, fee_version, provider,
+                 payment_due_at, authorized_at, created_at, updated_at, invoice, test_mode,
+                 notice]
+      properties:
+        order_id: { type: string, format: uuid }
+        auction_id: { type: string, format: uuid }
+        buyer_id: { type: string, format: uuid, description: The winning bidder; losers are never invoiced (AC-09). }
+        seller_id: { type: string, format: uuid }
+        winning_bid_id: { type: string, format: uuid }
+        state: { $ref: '#/components/schemas/OrderState' }
+        winning_bid_amount: { $ref: 'common.v1.yaml#/components/schemas/Money' }
+        convenience_fee: { $ref: 'common.v1.yaml#/components/schemas/Money' }
+        total:
+          $ref: 'common.v1.yaml#/components/schemas/Money'
+          description: winning_bid_amount + convenience_fee, the amount captured.
+        currency: { $ref: 'common.v1.yaml#/components/schemas/Currency' }
+        fee_version: { type: string }
+        provider: { type: string, enum: [razorpay, mock] }
+        payment_due_at: { type: [string, "null"], format: date-time }
+        authorized_at: { type: [string, "null"], format: date-time }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        invoice: { $ref: '#/components/schemas/Invoice' }
+        test_mode: { const: true }
+        notice: { type: string }
+    Checkout:
+      type: object
+      additionalProperties: false
+      required: [order_id, provider, key_id, provider_order_id, amount, amount_minor, currency,
+                 description, test_mode]
+      properties:
+        order_id: { type: string, format: uuid }
+        provider: { type: string, enum: [razorpay, mock] }
+        key_id:
+          type: [string, "null"]
+          description: Public Checkout key (rzp_test_...). Never the secret.
+        provider_order_id: { type: string, examples: ["order_PQ12abcXYZ"] }
+        amount: { $ref: 'common.v1.yaml#/components/schemas/Money' }
+        amount_minor: { type: integer, minimum: 1, description: The amount in paise. }
+        currency: { $ref: 'common.v1.yaml#/components/schemas/Currency' }
+        description: { type: string }
+        simulated_payment:
+          description: Mock adapter only, what the simulated Checkout returns.
+          oneOf:
+            - type: "null"
+            - type: object
+              additionalProperties: false
+              required: [payment_id, signature]
+              properties:
+                payment_id: { type: string }
+                signature: { type: string }
+        test_mode: { const: true }
+    PaymentConfirmation:
+      type: object
+      additionalProperties: false
+      description: Checkout handler fields razorpay_order_id, razorpay_payment_id, razorpay_signature.
+      required: [provider_order_id, payment_id, signature]
+      properties:
+        provider_order_id: { type: string, maxLength: 64 }
+        payment_id: { type: string, maxLength: 64 }
+        signature: { type: string, maxLength: 256 }
+    LedgerEntry:
+      type: object
+      additionalProperties: false
+      required: [id, entry_type, amount, currency, idempotency_key, provider_ref, note, created_at]
+      properties:
+        id: { type: [integer, "null"] }
+        entry_type: { enum: [CAPTURE, HOLD, FEE_RETAIN, RELEASE, REFUND, COMPENSATION] }
+        amount:
+          type: string
+          description: Signed two-decimal string (negative = out of custody).
+          pattern: '^-?(0|[1-9]\d{0,9})\.\d{2}$'
+        currency: { $ref: 'common.v1.yaml#/components/schemas/Currency' }
+        idempotency_key: { type: string, examples: ["order:1f0c...:capture"] }
+        provider_ref: { type: [string, "null"] }
+        note: { type: [string, "null"] }
+        created_at: { type: [string, "null"], format: date-time }
