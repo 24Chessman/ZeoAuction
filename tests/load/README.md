@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Owner** | Naitik (Integration Testing) |
-| **Jira** | #22 concurrency harness (Plan 3); the 1000 bids/s load test follows in Plan 7 |
+| **Jira** | #22 concurrency harness (Plan 3); #23 aggregate rig and week-9 baseline (Plan 4); the 1000 bids/s acceptance run follows in Plan 7 |
 
 ## `concurrency_harness.py`: contended single-auction bidding (FR-TEST-3, AC-02)
 
@@ -48,3 +48,26 @@ number (AC-02, the Plan 4 tuning baseline) comes from the dedicated load-test ho
 in HTTP mode.
 
 `services/bid/tests/test_concurrency_harness.py` runs a one-second in-process version on every CI build.
+
+## `aggregate_rig.py`: many auctions at once (#23, week-9 baseline)
+
+Spreads an aggregate rate over `--auctions` auctions (default 1000 bids/s over 50), each contended in bursts, and
+reports:
+
+- acknowledgement latency p50/p95/p99, plus the **schedule lag** and the **intended** latency (lag + response). A
+  saturated generator delays its own sends, and response latency alone would hide that (coordinated omission);
+- in-process only: p50/p95/p99 **per SDD Table 9.3 segment** (idempotency, validation, sequencing/CAS,
+  enqueue/publish, other), timed around every adapter call of the real hot path;
+- for each auction, that replaying its accepted log names its live leader;
+- a latency-vs-load curve with `--sweep`.
+
+```bash
+# In-process (indicative): the curve and the per-segment split
+.venv/Scripts/python.exe tests/load/aggregate_rig.py --sweep 250,500,750,1000 --auctions 50 --duration 10 --markdown
+
+# HTTP, against the load-test host (infra/loadtest/README.md): the numbers that count
+python tests/load/aggregate_rig.py --mode http --base-url http://<host>:8004 --auction-ids ids.txt     --sweep 250,500,750,1000,1250 --duration 30 --markdown
+```
+
+The week-9 results and the identified bottleneck are in `docs/perf/week-09-baseline.md`.
+`services/bid/tests/test_aggregate_rig.py` runs a one-second in-process version on every CI build.
