@@ -58,6 +58,7 @@ stateDiagram-v2
 - **`CLOSING` is split into two steps (A5 then A6).** SDD Table 6.1's guard "closes_at reached and the bid queue drained" would otherwise need to be checked atomically in one step. Splitting it lets a bid in flight at the deadline be sequenced and then either persisted or rejected with `AUCTION_CLOSED`.
 - **Auctions with no bids stay `CLOSED`.** A7 requires a winner, so an auction that received no bids stays `CLOSED` permanently. We treat that as terminal, with no order created.
 - **`AWAITING_CAPTURE_RETRY` is an order state, not an auction state** (SDD Table 2.2). The auction stays `CLOSED` until capture succeeds.
+- **A7 is driven by Payment** (Plan 4). The lifecycle timer asks Payment to open the order for every `CLOSED` auction with a winner and no order (CT-4, retried while Payment is down), and `HELD` on `payment.events` applies `settle`. If the winner never pays, the order is cancelled (O4) and the auction stays `CLOSED`, like an auction with no bids.
 - **Once `OPEN`, only the timer or an admin ends an auction.** Cancelling an `OPEN` auction isn't allowed. Removing a live listing is done by an admin through moderation (Plan 6) and is recorded as `cancel` with admin actor. That path needs admin moderation, and is added as A9 when Plan 6 specifies it.
 
 **Illegal (explicitly refused):** any event on SETTLED or CANCELLED; `publish` from anything but DRAFT;
@@ -70,10 +71,13 @@ stateDiagram-v2
 ```mermaid
 stateDiagram-v2
     [*] --> INVOICED: invoice
-    INVOICED --> CAPTURED: capture
-    INVOICED --> AWAITING_CAPTURE_RETRY: captureFailed
+    INVOICED --> AUTHORIZED: authorize
+    AUTHORIZED --> CAPTURED: capture
+    AUTHORIZED --> AWAITING_CAPTURE_RETRY: captureFailed
     AWAITING_CAPTURE_RETRY --> CAPTURED: capture
     INVOICED --> CANCELLED: compensate S1
+    AUTHORIZED --> CANCELLED: compensate S1
+    AWAITING_CAPTURE_RETRY --> CANCELLED: compensate S1
     CAPTURED --> IN_ESCROW: hold
     IN_ESCROW --> SHIPPED: markShipped
     SHIPPED --> DISPUTED: raiseDispute
@@ -88,10 +92,11 @@ stateDiagram-v2
 
 | # | Event | From | To | Guard | Effect (ledger rows are append-only) |
 |---|---|---|---|---|---|
-| O1 | `invoice` | – | INVOICED | Auction CLOSED with a winner; **losing bidders are never invoiced** (AC-09) | Order + invoice: `total = winning_bid + convenience_fee`, stamped with the active `fee_version` (saga S1) |
-| O2 | `capture` | INVOICED, AWAITING_CAPTURE_RETRY | CAPTURED | Manual capture through `PaymentPort` succeeds; key `order:{id}:capture` | `CAPTURE +captured_total` (S2) |
-| O3 | `captureFailed` | INVOICED | AWAITING_CAPTURE_RETRY | Payment breaker open (3 failures / 30 s) or provider error | None; retried with the **same** idempotency key |
-| O4 | `compensateS1` | INVOICED, AWAITING_CAPTURE_RETRY | CANCELLED | Capture definitively failed (retries exhausted) | Invoice `voided_at` set; alert raised. **No partial settlement remains** |
+| O1 | `invoice` | – | INVOICED | Auction CLOSED with a winner; **losing bidders are never invoiced** (AC-09); auction currency = settlement currency (INR) | Order + invoice: `total = winning_bid + convenience_fee`, stamped with the active `fee_version`; `payment_due_at = now + 48 h` (saga S1, CT-4) |
+| O1a | `authorize` | INVOICED | AUTHORIZED | The winner paid in Razorpay Checkout: Checkout's handler signature verifies, **or** a signed `payment.authorized` webhook names the order's provider order with the order's amount (ADR-0009) | `provider_payment_id` recorded. Whichever of the two arrives first wins; the other is a no-op |
+| O2 | `capture` | AUTHORIZED, AWAITING_CAPTURE_RETRY | CAPTURED | Manual capture through `PaymentPort` succeeds; key `order:{id}:capture` | `CAPTURE +captured_total` (S2) |
+| O3 | `captureFailed` | AUTHORIZED, AWAITING_CAPTURE_RETRY | AWAITING_CAPTURE_RETRY | Payment breaker open (3 failures / 30 s) or a transient provider error | None; retried by the settlement worker with backoff and the **same** idempotency key, for as long as it takes |
+| O4 | `compensateS1` | INVOICED, AUTHORIZED, AWAITING_CAPTURE_RETRY | CANCELLED | Capture definitively failed (declined or refused), **or** the winner did not pay by `payment_due_at` | Invoice `voided_at` set; `COMPENSATED` published. Nothing was captured, so the ledger is untouched, and an uncaptured authorisation lapses back to the buyer. **No partial settlement remains** |
 | O5 | `hold` | CAPTURED | IN_ESCROW | – | `HOLD 0` and `FEE_RETAIN −fee` (S3, S4) |
 | O6 | `markShipped` | IN_ESCROW | SHIPPED | Caller is the seller | `shipped_at = now`, `protection_window_ends_at = now + 7 days`: **the protection window opens** |
 | O7 | `raiseDispute` | SHIPPED | DISPUTED | Caller is the buyer; `now < protection_window_ends_at`; no open dispute | Escrow **frozen**. Refused with `WINDOW_CLOSED` (409) once the window has passed (AC-11) |

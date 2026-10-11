@@ -1,0 +1,75 @@
+openapi: 3.1.0
+info:
+  title: ZeoAuction internal contract CT-4 — open the settlement order
+  version: 1.0.0
+  description: |
+    Provider: Payment & Escrow (owner: Jaydip). Consumer: Auction Orchestration (Sumit).
+    Saga step S1 (#33, #34): once an auction is CLOSED with a winner, Orchestration asks Payment
+    to open the order and invoice (winning bid + the active flat fee). Idempotent per auction:
+    payment.orders.auction_id is unique, so a retry returns the existing order with 200.
+    Losing bidders are never invoiced (AC-09).
+
+    Authenticated with the shared X-Internal-Token (INTERNAL_SERVICE_TOKEN); never exposed
+    through the public gateway.
+
+    Consumer circuit breaker (SDD Table 2.2, Orchestration -> Payment): opens after 3 failures
+    in 30 s. While it is open, or the call fails, the auction stays CLOSED and the request is
+    retried on the next timer pass with the same Idempotency-Key: settlement is deferred, never
+    abandoned. HELD on payment.events then moves the auction to SETTLED (A7).
+servers:
+  - url: /api/v1
+paths:
+  /internal/orders:
+    post:
+      operationId: openOrder
+      summary: Open the order and invoice for a closed auction's winning bid (internal)
+      parameters:
+        - { $ref: '../common.v1.yaml#/components/parameters/IdempotencyKey' }
+        - name: X-Internal-Token
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SettlementRequest' }
+      responses:
+        '201':
+          description: Order and invoice created (INVOICED).
+          content:
+            application/json:
+              schema: { $ref: '../payment.v1.yaml#/components/schemas/Order' }
+        '200':
+          description: The auction already had this order (a retry).
+          content:
+            application/json:
+              schema: { $ref: '../payment.v1.yaml#/components/schemas/Order' }
+        '401':
+          description: UNAUTHENTICATED, missing or wrong service token.
+          content:
+            application/json:
+              schema: { $ref: '../common.v1.yaml#/components/schemas/Error' }
+        '409':
+          description: SETTLEMENT_CONFLICT, the auction has an order for a different winning bid.
+          content:
+            application/json:
+              schema: { $ref: '../common.v1.yaml#/components/schemas/Error' }
+        '422':
+          description: VALIDATION_ERROR, e.g. a currency other than the settlement currency (INR).
+          content:
+            application/json:
+              schema: { $ref: '../common.v1.yaml#/components/schemas/Error' }
+components:
+  schemas:
+    SettlementRequest:
+      type: object
+      additionalProperties: false
+      required: [auction_id, buyer_id, seller_id, winning_bid_id, winning_bid_amount, currency]
+      properties:
+        auction_id: { type: string, format: uuid }
+        buyer_id: { type: string, format: uuid, description: The winning bidder. }
+        seller_id: { type: string, format: uuid }
+        winning_bid_id: { type: string, format: uuid }
+        winning_bid_amount: { $ref: '../common.v1.yaml#/components/schemas/Money' }
+        currency: { $ref: '../common.v1.yaml#/components/schemas/Currency' }

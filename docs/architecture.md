@@ -36,7 +36,7 @@ logs with a request id, the uniform error envelope, and API docs at `/api/v1/doc
 
 ## 2. Integration styles
 
-**Synchronous (REST)** is used only where the caller cannot proceed without an answer. There are exactly three of these boundaries, each
+**Synchronous (REST)** is used only where the caller cannot proceed without an answer. There are exactly four of these boundaries (CT-4 added in Plan 4), each
 circuit-broken with a declared fallback and covered by a contract test:
 
 | Id | Boundary | Breaker opens | Fallback |
@@ -44,7 +44,8 @@ circuit-broken with a declared fallback and covered by a contract test:
 | CT-1 | Bid → Auction Orchestration (`GET /auctions/{id}/state`) | 5 failures / 10 s | Cached state under 2 s old, else `AUCTION_STATE_UNAVAILABLE` |
 | CT-2 | Auction Orchestration → KYC listing gate | – | Gate reads the JWT `kyc_status` claim, so there's no call on the hot path (ADR-0005) |
 | CT-3 | Bid → Pricing (`GET /pricing/{id}/min-increment`) | 5 failures / 10 s | Last cached increment; bid flagged `increment_stale` |
-| – | Orchestration → Payment (capture) | 3 failures / 30 s | Order parked in `AWAITING_CAPTURE_RETRY`; retried with the same key |
+| CT-4 | Orchestration → Payment (`POST /internal/orders`, open the order, S1) | 3 failures / 30 s | Auction stays `CLOSED`; the lifecycle timer retries with the same `Idempotency-Key` |
+| – | Payment → provider (capture, S2) | 3 failures / 30 s | Order parked in `AWAITING_CAPTURE_RETRY`; the settlement worker retries with the same key |
 
 **Asynchronous (Kafka)** is used for everything else. See [`contracts/events/topics.yaml`](../contracts/events/topics.yaml).
 `bid.events` is keyed by `auction_id`, so all bids for one auction are on one partition in `server_seq`
@@ -91,5 +92,5 @@ encrypted at rest; `listing-images` isn't. Tables store object keys, never URLs.
 | `auctions.search_vector` with a GIN index | `search.auction_index.search_vector`, a projection owned by Search | Search may not read `auction.auctions`; the projection is built from events |
 | Auction parked in `AWAITING_CAPTURE_RETRY` (6.5) | That state lives on the **order**; the auction stays `CLOSED` | Matches SDD Table 2.2 and keeps Table 6.1 unchanged |
 | `CLOSING` → `CLOSED` in one step | Two events: `close`, then `drained` | Makes "bid queue drained" an explicit, testable guard |
-| Payment provider: Stripe | Pending ADR-0009 (Stripe or Razorpay) | The proposal and SDD disagree; `PaymentPort` isolates the choice |
+| Payment provider: Stripe, `POST /webhooks/stripe`, server-side capture at close | **Razorpay test mode, INR** (ADR-0009): the winner pays in Checkout, then we capture; `POST /webhooks/razorpay` | Matches the proposal; Razorpay can't charge a buyer off-session without mandates. `PaymentPort` isolates the choice |
 | No notification store named | `notify.notifications`, owned by `ws-gateway` | Backs `GET /api/v1/notifications` (SDD 7.2) |

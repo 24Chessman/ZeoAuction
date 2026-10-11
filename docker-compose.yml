@@ -172,6 +172,10 @@ services:
       CHECK_TOKEN_FRESHNESS: "true"     # listing gate refuses tokens older than a KYC change
       RUN_LIFECYCLE_TIMER: "true"       # A2 open, A5 close, A6 drained
       DRAIN_GRACE_SECONDS: "5"
+      PAYMENT_SERVICE_URL: http://payment-escrow:8000
+      SETTLE_ORDERS: "true"             # S1: open the order for a CLOSED winner (CT-4)
+      CONSUME_PAYMENT_EVENTS: "true"    # A7 settle when payment.events reports HELD
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-zeo-dev-internal-token-not-for-production}
 
   bid:
     <<: *service-common
@@ -182,7 +186,7 @@ services:
       DATABASE_URL: postgresql://bid_svc:bid_dev_pw@postgres:5432/zeoauction
       AUCTION_SERVICE_URL: http://auction-orchestrator:8000
       PRICING_SERVICE_URL: http://pricing:8000
-      PRICING_MODE: stub          # "http" once the Pricing Engine serves CT-3 (Plan 4)
+      PRICING_MODE: http          # CT-3 to the Pricing Engine; "stub" = fixed tier table
       BID_PUBLISHER: kafka
       STUB_FUNDS_LIMIT: "100000.00"
 
@@ -193,6 +197,7 @@ services:
     environment:
       <<: *service-env
       DATABASE_URL: postgresql://pricing_svc:pricing_dev_pw@postgres:5432/zeoauction
+      CONSUME_BID_EVENTS: "true"        # velocity and the hot flag (#42, #44)
 
   payment-escrow:
     <<: *service-common
@@ -201,6 +206,14 @@ services:
     environment:
       <<: *service-env
       DATABASE_URL: postgresql://payment_svc:payment_dev_pw@postgres:5432/zeoauction
+      PAYMENT_PUBLISHER: kafka          # SettlementStep v1 on payment.events
+      RUN_SETTLEMENT_WORKER: "true"     # capture retries, resumed captures, unpaid expiry
+      # Razorpay TEST MODE (ADR-0009); empty unless PAYMENT_ADAPTER=razorpay in .env.
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
+      RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
+      RAZORPAY_LINKED_ACCOUNT: ${RAZORPAY_LINKED_ACCOUNT:-}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-zeo-dev-internal-token-not-for-production}
 
   dispute:
     <<: *service-common
@@ -247,6 +260,7 @@ services:
     environment:
       <<: *service-env
       DATABASE_URL: postgresql://fraud_svc:fraud_dev_pw@postgres:5432/zeoauction
+      CONSUME_BID_EVENTS: "true"        # streaming scaffold on bid.events (#52)
 
   bid-flusher:
     <<: *service-common

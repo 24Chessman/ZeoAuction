@@ -10,8 +10,11 @@ They were frozen at the end of Plan 1. Implementations change to match the contr
 | `openapi/internal/auction-state.v1.yaml` | **CT-1**: Bid → Auction Orchestration state lookup | Sumit (provider) |
 | `openapi/internal/pricing.v1.yaml` | **CT-3**: Bid → Pricing minimum increment | Sagar (provider) |
 | `openapi/internal/kyc-status.v1.yaml` | **CT-2**: KYC status vocabulary and the listing gate's refusals | Sagar (provider), Sumit (enforcer) |
+| `openapi/internal/settlement.v1.yaml` | **CT-4**: Auction Orchestration → Payment, open the settlement order (S1) | Jaydip (provider), Sumit (consumer) |
+| `openapi/payment.v1.yaml` | Payment public API: fee quote, orders, Razorpay Checkout, webhooks, ledger (Plan 4) | Jaydip |
 | `errors/common-error-codes.yaml` | Platform-wide error codes | Ayush |
 | `errors/bid-rejection-codes.yaml` | Bid rejection taxonomy (SDD Table 5.1), final v1.0.0 since Plan 3 (#21) | Naitik |
+| `errors/payment-error-codes.yaml` | Payment and settlement error codes (Plan 4) | Jaydip |
 | `events/topics.yaml` | Kafka topics, keys, retention, producers and consumers | Sumit |
 | `events/bid_accepted.v1.json` | `BidAccepted v1` on `bid.events` (#50) | Harshal + Sumit |
 | `events/auction_state_changed.v1.json` | `AuctionStateChanged v1` on `auction.events` | Sumit |
@@ -24,6 +27,10 @@ and `tv` claims, and refuses tokens older than the last KYC change (`TOKEN_STALE
 **Plan 3 changes:** `bid.events` gained the consumer group `auction-orchestrator` (anti-snipe and the drained winner).
 `AuctionStateChanged v1` has no `drained` event, so the CLOSING → CLOSED step is published as `close` with
 `from_state = CLOSING`; adding `drained` to the enum is a decision for the interface owner.
+
+**Plan 4 changes:** ADR-0009 chose Razorpay test mode, so money examples are INR and the fee is `2026-10-v1`
+(₹99.00). CT-4 and the payment API are new. `SettlementStep v1` is unchanged: the Checkout authorisation is
+not a settlement step, so it isn't published (the order view shows it as `AUTHORIZED`).
 
 ## Rules
 
