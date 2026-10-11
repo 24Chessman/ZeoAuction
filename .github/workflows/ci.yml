@@ -162,3 +162,21 @@ jobs:
           failed = [name for name, job in needs.items() if job["result"] != "success"]
           print("failed:", failed or "none")
           sys.exit(1 if failed else 0)'
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
