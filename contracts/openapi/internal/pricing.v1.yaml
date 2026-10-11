@@ -1,0 +1,71 @@
+openapi: 3.1.0
+info:
+  title: ZeoAuction internal contract CT-3 — minimum increment
+  version: 1.0.0
+  description: |
+    Provider: Pricing Engine (owner: Sagar). Consumer: Bid Processing (Naitik).
+    Pins the increment response shape and the numeric type used for money (SDD 7.10):
+    money is always a two-decimal string, never a JSON number.
+
+    Consumer circuit breaker (SDD Table 2.2): opens after 5 failures in 10 s; while open,
+    use the last cached increment (Redis inc:{auction_id}) and flag the bid increment_stale.
+servers:
+  - url: /api/v1
+paths:
+  /pricing/{auctionId}/min-increment:
+    get:
+      operationId: getMinIncrement
+      summary: Current minimum bid increment for one auction (internal)
+      parameters:
+        - name: auctionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: current_price
+          in: query
+          required: true
+          schema: { $ref: '../common.v1.yaml#/components/schemas/Money' }
+      responses:
+        '200':
+          description: The increment in force.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MinIncrement' }
+  /pricing/{auctionId}/velocity:
+    get:
+      operationId: getVelocity
+      summary: Rolling bid rate for one auction (internal, FR-PRICE-1)
+      parameters:
+        - name: auctionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Current velocity.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [auction_id, bids_per_minute, hot, computed_at]
+                properties:
+                  auction_id: { type: string, format: uuid }
+                  bids_per_minute: { type: number, minimum: 0 }
+                  hot: { type: boolean }
+                  computed_at: { type: string, format: date-time }
+components:
+  schemas:
+    MinIncrement:
+      type: object
+      additionalProperties: false
+      required: [auction_id, min_increment, min_next_bid, hot, computed_at]
+      properties:
+        auction_id: { type: string, format: uuid }
+        min_increment: { $ref: '../common.v1.yaml#/components/schemas/Money' }
+        min_next_bid:
+          $ref: '../common.v1.yaml#/components/schemas/Money'
+          description: current_price + min_increment.
+        hot:
+          type: boolean
+          description: Auction is flagged as contended (FR-PRICE-3).
+        computed_at: { type: string, format: date-time }
