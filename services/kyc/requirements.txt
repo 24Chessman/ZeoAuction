@@ -1,0 +1,2 @@
+# Service-specific runtime dependencies. zeo-common is installed separately.
+python-multipart>=0.0.9
