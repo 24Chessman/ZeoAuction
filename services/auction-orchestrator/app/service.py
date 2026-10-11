@@ -1,4 +1,4 @@
-"""Auction Orchestration use cases: listing, lifecycle transitions, timers and bids.
+"""Auction Orchestration use cases: listing, lifecycle transitions, timers, bids, settlement.
 
 Every transition goes through :func:`app.domain.lifecycle.transition`, is saved with the
 version check, recorded in ``auction_state_transitions``, and then published to
@@ -17,9 +17,12 @@ from prometheus_client import CollectorRegistry, Counter
 
 from app.adapters.auction_repo import AuctionRepository, StaleAuction
 from app.adapters.kafka_producer import AuctionEventPublisher, build_state_changed
+from app.adapters.payment_client import PaymentClient, PaymentUnavailable, SettlementRefused
+from app.adapters.payment_events import SettlementStep
 from app.domain.anti_snipe import AcceptedBid, apply_bid
 from app.domain.auction import Auction, AuctionValidationError, new_draft
 from app.domain.lifecycle import SYSTEM, Actor, GuardFailed, IllegalTransition, transition
+from app.domain.settlement import NotSettleable, record_order, settlement_request
 from zeo_common import ApiError
 from zeo_common.auth import Principal
 
@@ -40,6 +43,11 @@ class AuctionMetrics:
         self.publish_failures = Counter(
             "auction_events_publish_failures",
             "Transitions committed but not published to auction.events.", registry=registry,
+        )
+        self.settlement_deferred = Counter(
+            "auction_settlement_deferred",
+            "Order opening deferred because Payment was unavailable or refused (CT-4).",
+            ["reason"], registry=registry,
         )
 
 
@@ -78,12 +86,16 @@ class AuctionService:
         *,
         drain_grace: timedelta = timedelta(seconds=5),
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        payment: PaymentClient | None = None,
     ) -> None:
         self.repo = repo
         self.publisher = publisher
         self.metrics = metrics
         self.drain_grace = drain_grace
         self.clock = clock
+        # None where settlement is not wired (local runs without Payment): auctions then stay
+        # CLOSED until an administrator settles them.
+        self.payment = payment
 
     async def load(self, auction_id: UUID) -> Auction:
         auction = await self.repo.get(auction_id)
@@ -138,7 +150,14 @@ class AuctionService:
     # ------------------------------------------------------------------ platform
 
     async def tick(self, limit: int = 100) -> list[tuple[UUID, str]]:
-        """One pass of the lifecycle timer: open, close and drain whatever is due."""
+        """One pass of the lifecycle timer: open, close and drain whatever is due, then hand
+        closed auctions to Payment."""
+        done = await self._tick_transitions(limit)
+        for auction_id in await self.settle_pending(limit):
+            done.append((auction_id, "invoice"))
+        return done
+
+    async def _tick_transitions(self, limit: int) -> list[tuple[UUID, str]]:
         done = []
         for auction, event in await self.repo.due(self.clock(), self.drain_grace, limit):
             try:
@@ -175,3 +194,65 @@ class AuctionService:
                 continue  # a timer or another event moved the row; re-read and re-apply
             return outcome.extended
         raise StaleAuction(str(bid.auction_id))
+
+    # ------------------------------------------------------------------ settlement (#33)
+
+    async def settle_pending(self, limit: int = 100) -> list[UUID]:
+        """S1 for every CLOSED auction with a winner and no order: Payment opens the order and
+        invoice. A failure leaves the auction CLOSED for the next pass (deferred, never
+        abandoned); while the breaker is open the pass stops early instead of failing fast
+        once per auction."""
+        if self.payment is None:
+            return []
+        opened = []
+        for auction in await self.repo.awaiting_settlement(limit):
+            try:
+                order_id = await self.payment.open_order(settlement_request(auction))
+            except PaymentUnavailable as exc:
+                self.metrics.settlement_deferred.labels(reason="unavailable").inc()
+                logger.warning("Opening the order for auction %s deferred: %s", auction.id, exc)
+                break
+            except (SettlementRefused, NotSettleable) as exc:
+                self.metrics.settlement_deferred.labels(reason="refused").inc()
+                logger.error("Payment refused to settle auction %s: %s", auction.id, exc)
+                continue
+            try:
+                await self.repo.record_settlement(
+                    auction, record_order(auction, order_id, self.clock()))
+            except StaleAuction:
+                continue  # re-read next pass; Payment returns the same order (idempotent)
+            opened.append(auction.id)
+        return opened
+
+    async def on_settlement_step(self, step: SettlementStep) -> bool:
+        """A7 ``settle`` once Payment reports the order HELD in escrow. Returns whether the
+        auction moved; a redelivery or an already SETTLED auction changes nothing."""
+        if step.type != "HELD":
+            return False
+        for _ in range(MAX_BID_ATTEMPTS):
+            auction = await self.repo.get(step.auction_id)
+            if auction is None:
+                logger.warning("Order %s refers to unknown auction %s", step.order_id,
+                               step.auction_id)
+                return False
+            if auction.state != "CLOSED":
+                return False
+            if auction.settlement_order_id is None:
+                # HELD overtook our own record of the order; remember it on the way.
+                auction = await self._remember_order(auction, step.order_id)
+                if auction is None:
+                    continue
+            try:
+                await self._apply(auction, "settle", SYSTEM)
+            except StaleAuction:
+                continue
+            return True
+        raise StaleAuction(str(step.auction_id))
+
+    async def _remember_order(self, auction: Auction, order_id: UUID) -> Auction | None:
+        after = record_order(auction, order_id, self.clock())
+        try:
+            await self.repo.record_settlement(auction, after)
+        except StaleAuction:
+            return None
+        return after

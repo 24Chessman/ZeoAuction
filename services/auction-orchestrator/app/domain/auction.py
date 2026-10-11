@@ -55,6 +55,11 @@ class Auction:
     leading_bid_id: UUID | None = None
     # When A5 close happened; A6 drained waits a grace period after it.
     closing_since: datetime | None = None
+    # The leader's bidder and amount (BidAccepted v1), frozen at A6: the winner Payment invoices.
+    leading_bidder_id: UUID | None = None
+    leading_amount: Decimal | None = None
+    # Set once Payment has opened the order for the winning bid (saga S1, CT-4).
+    settlement_order_id: UUID | None = None
 
     @property
     def bid_permitted(self) -> bool:
@@ -63,6 +68,12 @@ class Auction:
     @property
     def has_bids(self) -> bool:
         return self.last_bid_seq > 0
+
+    @property
+    def awaiting_settlement(self) -> bool:
+        """CLOSED with a winner, and Payment has not opened the order yet."""
+        return (self.state == "CLOSED" and self.winning_bid_id is not None
+                and self.settlement_order_id is None)
 
 
 class AuctionValidationError(ValueError):

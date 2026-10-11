@@ -54,7 +54,7 @@ async def test_add_inserts_the_row_and_a_create_transition():
     await PostgresAuctionRepository(pool).add(auction)
     assert pool.log[0] == "BEGIN"
     assert pool.log[1][0].startswith("INSERT INTO auctions")
-    assert len(pool.log[1][1]) == 23
+    assert len(pool.log[1][1]) == 26
     assert pool.log[2][1][1:5] == ("create", None, "DRAFT", SELLER)
     assert pool.log[-1] == "COMMIT"
 
@@ -72,9 +72,9 @@ async def test_save_transition_checks_the_version_and_records_the_event():
     after = transition(before, "publish", now=NOW, actor=Actor(SELLER))
     await PostgresAuctionRepository(pool).save_transition(before, after, "publish", SELLER)
     sql, args = pool.log[1]
-    assert sql.endswith("WHERE id = $11 AND version = $12")
+    assert sql.endswith("WHERE id = $14 AND version = $15")
     assert args[-2:] == (before.id, 1)
-    assert args[9] == 2
+    assert args[12] == 2  # the new version
     assert pool.log[2][1][1:5] == ("publish", "DRAFT", "SCHEDULED", SELLER)
 
 

@@ -11,6 +11,7 @@ at-least-once delivery from Kafka can never extend an auction twice for one bid.
 
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
+from decimal import Decimal
 from uuid import UUID
 
 from app.domain.auction import Auction
@@ -25,6 +26,9 @@ class AcceptedBid:
     bid_id: UUID
     server_seq: int
     accepted_at: datetime
+    # Who bid and how much; the winner's become the settlement order (#33).
+    bidder_id: UUID | None = None
+    amount: Decimal | None = None
 
 
 @dataclass(frozen=True)
@@ -52,12 +56,10 @@ def apply_bid(auction: Auction, bid: AcceptedBid, now: datetime) -> BidOutcome:
     """Record the bid as the leader and extend if the rule says so."""
     if bid.server_seq <= auction.last_bid_seq:
         return BidOutcome(auction, extended=False, duplicate=True)
+    leader = {"last_bid_seq": bid.server_seq, "leading_bid_id": bid.bid_id,
+              "leading_bidder_id": bid.bidder_id, "leading_amount": bid.amount}
     if should_extend(auction, bid.accepted_at):
         extended = transition(auction, "extend", now=now, actor=SYSTEM)
-        return BidOutcome(
-            replace(extended, last_bid_seq=bid.server_seq, leading_bid_id=bid.bid_id),
-            extended=True,
-        )
-    recorded = replace(auction, last_bid_seq=bid.server_seq, leading_bid_id=bid.bid_id,
-                       updated_at=now, version=auction.version + 1)
+        return BidOutcome(replace(extended, **leader), extended=True)
+    recorded = replace(auction, updated_at=now, version=auction.version + 1, **leader)
     return BidOutcome(recorded, extended=False)

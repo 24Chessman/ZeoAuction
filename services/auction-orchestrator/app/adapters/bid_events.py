@@ -15,6 +15,7 @@ from typing import Any
 from uuid import UUID
 
 from app.domain.anti_snipe import AcceptedBid
+from zeo_common import parse_money
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,8 @@ def parse_accepted(event: dict[str, Any]) -> AcceptedBid | None:
             bid_id=UUID(event["bid_id"]),
             server_seq=int(event["server_seq"]),
             accepted_at=datetime.fromisoformat(event["accepted_at"].replace("Z", "+00:00")),
+            bidder_id=UUID(event["bidder_id"]),
+            amount=parse_money(event["amount"]),
         )
     except (KeyError, ValueError, TypeError, AttributeError):
         return None

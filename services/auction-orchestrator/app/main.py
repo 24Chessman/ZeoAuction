@@ -6,6 +6,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import timedelta
 
+import httpx
 from fastapi import FastAPI
 
 from app.adapters.auction_repo import (
@@ -19,6 +20,8 @@ from app.adapters.kafka_producer import (
     InMemoryAuctionEventPublisher,
     KafkaAuctionEventPublisher,
 )
+from app.adapters.payment_client import PaymentClient, payment_breaker
+from app.adapters.payment_events import PaymentEventsConsumer
 from app.api import router
 from app.service import AuctionMetrics, AuctionService
 from app.settings import Settings
@@ -29,7 +32,7 @@ from zeo_common.db import create_pool, postgres_check
 from zeo_common.gateway import RedisTokenVersions, TokenVersions, install_gateway
 from zeo_common.redis import create_redis, redis_check
 
-VERSION = "0.3.0"
+VERSION = "0.4.0"
 
 
 def build_app(
@@ -39,6 +42,7 @@ def build_app(
     publisher: AuctionEventPublisher | None = None,
     token_versions: TokenVersions | None = None,
     jwt_settings: JwtSettings | None = None,
+    payment: PaymentClient | None = None,
 ) -> FastAPI:
     """Create the service. Tests pass ``repository``; otherwise it is built at start-up."""
     settings = settings or Settings.from_env()
@@ -52,8 +56,10 @@ def build_app(
     metrics = AuctionMetrics(app.state.metrics)
     drain_grace = timedelta(seconds=settings.drain_grace_seconds)
 
-    def attach(repo: AuctionRepository, events: AuctionEventPublisher) -> AuctionService:
-        service = AuctionService(repo, events, metrics, drain_grace=drain_grace)
+    def attach(repo: AuctionRepository, events: AuctionEventPublisher,
+               payment_client: PaymentClient | None = payment) -> AuctionService:
+        service = AuctionService(repo, events, metrics, drain_grace=drain_grace,
+                                 payment=payment_client)
         app.state.auction_service = service
         return service
 
@@ -78,7 +84,14 @@ def build_app(
             await kafka.start()
             app.state.readiness.add_check("kafka", kafka.ready)
             events = kafka
-        service = attach(PostgresAuctionRepository(pool), events)
+        payment_http = None
+        payment_client = payment
+        if payment_client is None and settings.settle_orders:
+            payment_http = httpx.AsyncClient(base_url=settings.payment_service_url,
+                                             timeout=httpx.Timeout(5.0))
+            payment_client = PaymentClient(payment_http, payment_breaker(),
+                                           settings.internal_token)
+        service = attach(PostgresAuctionRepository(pool), events, payment_client)
         timer = LifecycleTimer(service, settings.timer_interval_seconds)
         if settings.run_timer:
             timer.start()
@@ -88,14 +101,24 @@ def build_app(
                 settings.kafka_bootstrap_servers, service.on_bid_accepted
             )
             consumer_task = asyncio.create_task(consumer.run(), name="bid-events-consumer")
+        settlement_task = None
+        if settings.consume_payment_events:
+            settlements = PaymentEventsConsumer.connect(
+                settings.kafka_bootstrap_servers, service.on_settlement_step
+            )
+            settlement_task = asyncio.create_task(settlements.run(),
+                                                  name="payment-events-consumer")
         try:
             yield
         finally:
             await timer.stop()
-            if consumer_task is not None:
-                consumer_task.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    await consumer_task
+            for task in (consumer_task, settlement_task):
+                if task is not None:
+                    task.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await task
+            if payment_http is not None:
+                await payment_http.aclose()
             if isinstance(events, KafkaAuctionEventPublisher):
                 await events.stop()
             if redis is not None:

@@ -4,10 +4,11 @@
 |---|---|
 | **Component** | Auction Orchestration |
 | **Interface owner** | Sumit |
-| **Kind** | HTTP API service, plus the lifecycle timer and a `bid.events` consumer in the same process |
+| **Kind** | HTTP API service, plus the lifecycle timer and the `bid.events` and `payment.events` consumers in the same process |
 | **Owns schema** | `auction` (database role `auction_svc`) |
 | **Design** | SDD 6.1; `docs/state-machines.md` §1; CT-1 `contracts/openapi/internal/auction-state.v1.yaml`; CT-2 `contracts/openapi/internal/kyc-status.v1.yaml` |
 | **Plan 3** | #24 lifecycle guards (Naitik), #32 anti-snipe + `auction.events` (Sumit), #41 listing gate (Sagar) |
+| **Plan 4** | #33 settlement hand-off: CT-4 to Payment (`app/adapters/payment_client.py`) and A7 on `HELD` (`app/adapters/payment_events.py`) |
 
 ## Responsibility
 
@@ -34,6 +35,15 @@ with valid unverified tokens and checks zero auctions are created.
 reached, and A6 `drained` a grace period (`DRAIN_GRACE_SECONDS`, 5 s) after closing, so bids accepted just before the
 deadline reach `bid.events` first. A6 sets `winning_bid_id` to the accepted bid with the highest `server_seq`.
 Several instances are safe: the version check lets exactly one win.
+
+**Settlement (A7, #33).** The `bid.events` consumer also keeps the leader's bidder and amount, so at A6 the auction
+knows its winner. Each timer pass then asks Payment to open the order for every `CLOSED` auction with a winner and no
+order (CT-4, `contracts/openapi/internal/settlement.v1.yaml`, key `auction:{id}:settle`). Only the winner is ever sent,
+so losing bidders are never invoiced. The call is behind the Orchestration → Payment breaker (3 failures in 30 s).
+While Payment is down the auction stays `CLOSED` and is retried, so settlement is deferred, never abandoned.
+When the winner has paid, Payment publishes `HELD` on `payment.events`, and the consumer applies A7 `settle`.
+New auctions are listed in INR (ADR-0009). Settings: `SETTLE_ORDERS`, `PAYMENT_SERVICE_URL`, `INTERNAL_SERVICE_TOKEN`,
+`CONSUME_PAYMENT_EVENTS`.
 
 **Anti-snipe (A4)** (`app/domain/anti_snipe.py`, fed by `bid.events`, group `auction-orchestrator`): a bid accepted within
 `guard_interval_seconds` of `closes_at` moves the auction to `EXTENDED` and adds `extension_seconds`, at most

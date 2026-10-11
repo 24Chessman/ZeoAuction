@@ -51,7 +51,8 @@ class CreateAuctionRequest(BaseModel):
     category: str
     starting_price: MoneyStr
     reserve_price: MoneyStr | None = None
-    currency: str = Field(default="USD", pattern=r"^[A-Z]{3}$")
+    # The platform settles in INR (ADR-0009); Payment refuses any other currency at S1.
+    currency: str = Field(default="INR", pattern=r"^INR$")
     opens_at: datetime | None = None
     closes_at: datetime | None = None
 
