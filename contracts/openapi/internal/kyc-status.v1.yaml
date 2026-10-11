@@ -1,0 +1,115 @@
+openapi: 3.1.0
+info:
+  title: ZeoAuction internal contract CT-2 — KYC listing gate
+  version: 1.0.0
+  description: |
+    Provider: KYC (owner: Sagar) publishes the status vocabulary and is the only writer of the
+    `kyc_status` claim mirror. Enforcer: Auction Orchestration (Sumit), through the shared
+    gateway dependency `zeo_common.gateway.VerifiedSeller` (Ayush, #95).
+
+    CT-2 has no call on the hot path (ADR-0005): the gate reads the verified JWT's
+    `kyc_status`, `suspended` and `tv` (token_version) claims. Whenever KYC changes a status it
+    increments `auth.users.token_version` in the same transaction and publishes it to Redis as
+    `tv:{user_id}`; a gated request whose token carries an older `tv` is refused with
+    `401 UNAUTHENTICATED`, `details.reason = TOKEN_STALE`, and the client refreshes its token
+    (forced refresh, docs/state-machines.md K1-K7).
+
+    Order of checks: token valid -> token fresh -> not suspended -> kyc_status = VERIFIED.
+    AC-06: a direct API call with a valid unverified token creates zero auctions.
+servers:
+  - url: /api/v1
+paths:
+  /auctions:
+    post:
+      operationId: createAuction
+      summary: Create a DRAFT listing; behind the listing gate
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateAuction' }
+      responses:
+        '201':
+          description: DRAFT created; the seller is the caller.
+        '401':
+          description: >
+            UNAUTHENTICATED. Missing or invalid token, or details.reason = TOKEN_STALE when the
+            token predates a KYC status change (refresh and retry).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GateRefusal' }
+        '403':
+          description: >
+            SELLER_NOT_VERIFIED (details.kyc_status is the caller's status) or
+            ACCOUNT_SUSPENDED.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GateRefusal' }
+        '503':
+          description: SERVICE_UNAVAILABLE. Token freshness could not be checked; the gate fails closed.
+          content:
+            application/json:
+              schema: { $ref: '../common.v1.yaml#/components/schemas/Error' }
+  /auctions/{auctionId}/publish:
+    post:
+      operationId: publishAuction
+      summary: DRAFT -> SCHEDULED (A1); same gate, caller must be the seller
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: auctionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Scheduled.
+        '401':
+          description: As for createAuction.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GateRefusal' }
+        '403':
+          description: SELLER_NOT_VERIFIED, ACCOUNT_SUSPENDED, or FORBIDDEN when the caller is not the seller.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GateRefusal' }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    KycStatus:
+      description: >
+        The `kyc_status` claim and auth.users mirror. Only VERIFIED passes the gate.
+        REJECTED is recoverable by resubmission; SUSPENDED is reversible by an administrator.
+      type: string
+      enum: [NOT_SUBMITTED, SUBMITTED, UNDER_REVIEW, VERIFIED, REJECTED, SUSPENDED]
+    CreateAuction:
+      type: object
+      additionalProperties: false
+      description: A seller_id is not accepted; the seller is the token's subject.
+      required: [title, category, starting_price]
+      properties:
+        title: { type: string, minLength: 3, maxLength: 200 }
+        description: { type: string }
+        category: { type: string }
+        starting_price: { $ref: '../common.v1.yaml#/components/schemas/Money' }
+        reserve_price: { $ref: '../common.v1.yaml#/components/schemas/Money' }
+        currency: { $ref: '../common.v1.yaml#/components/schemas/Currency' }
+        opens_at: { type: [string, "null"], format: date-time }
+        closes_at: { type: [string, "null"], format: date-time }
+    GateRefusal:
+      allOf:
+        - $ref: '../common.v1.yaml#/components/schemas/Error'
+        - type: object
+          properties:
+            code:
+              enum: [UNAUTHENTICATED, SELLER_NOT_VERIFIED, ACCOUNT_SUSPENDED, FORBIDDEN]
+            details:
+              type: [object, "null"]
+              properties:
+                kyc_status: { $ref: '#/components/schemas/KycStatus' }
+                reason: { const: TOKEN_STALE }
