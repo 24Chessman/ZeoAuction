@@ -29,3 +29,12 @@ Thumbs.db
 
 # Local data
 *.log
+
+# Frontend
+node_modules/
+frontend/dist/
+frontend/coverage/
+
+# Load-test host outputs (infra/loadtest/provision.sh)
+infra/loadtest/ids.txt
+infra/loadtest/host-info.txt
