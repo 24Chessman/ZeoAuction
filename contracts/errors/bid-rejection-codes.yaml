@@ -1,0 +1,75 @@
+# Bid rejection taxonomy (SDD Table 5.1, FR-BID-4). Owner: Naitik (#18 draft, #21 final).
+# Published, stable and machine-readable: the SPA and third-party integrators consume the same
+# vocabulary, delivered in the uniform error envelope {code, message, details, request_id}.
+#
+# Versioning (semver): adding a code or an optional details key = minor bump; changing a
+# code's meaning, HTTP status or a details key = breaking change (major bump).
+#
+# Per code:
+#   http       HTTP status of the response.
+#   path       "bid" (POST /auctions/{id}/bids) or "listing" (POST /auctions, shared vocabulary).
+#   retryable  true = retry the same request with the SAME Idempotency-Key; false = the request
+#              will be refused again until something else changes.
+#   details    keys always present in the envelope's details (empty = details is null).
+#
+# tests/contracts/test_openapi_contracts.py checks every bid-path code is documented on
+# contracts/openapi/bid-service.v1.yaml with the same HTTP status; services/bid/tests/
+# test_rejections.py checks the service raises exactly this vocabulary.
+version: "1.0.0"
+status: final
+codes:
+  - code: SELLER_NOT_VERIFIED
+    http: 403
+    path: listing
+    retryable: false
+    details: [kyc_status]
+    condition: "Caller's KYC status is not VERIFIED. Raised on the listing path (POST /auctions), shared vocabulary."
+  - code: ACCOUNT_SUSPENDED
+    http: 403
+    path: bid
+    retryable: false
+    details: []
+    condition: "Caller is suspended by an administrator."
+  - code: SELF_BIDDING_FORBIDDEN
+    http: 403
+    path: bid
+    retryable: false
+    details: []
+    condition: "Bidder is the seller of the auction."
+  - code: AUCTION_NOT_OPEN
+    http: 409
+    path: bid
+    retryable: false
+    details: [state]
+    condition: "Auction state is not OPEN or EXTENDED. details.state is the state it is in."
+  - code: AUCTION_CLOSED
+    http: 409
+    path: bid
+    retryable: false
+    details: []
+    condition: "Auction closed between validation and resolution."
+  - code: BID_BELOW_INCREMENT
+    http: 422
+    path: bid
+    retryable: false
+    details: [min_next_bid]
+    condition: "Amount is below current price plus minimum increment. details.min_next_bid carries the minimum."
+  - code: INSUFFICIENT_FUNDS
+    http: 402
+    path: bid
+    retryable: false
+    details: []
+    condition: "Funds check failed."
+  - code: DUPLICATE_IDEMPOTENCY_KEY
+    http: 200
+    path: bid
+    kind: replay
+    retryable: false
+    details: []
+    condition: "Retry of a prior submission; the original result is returned with header Idempotent-Replay: true."
+  - code: AUCTION_STATE_UNAVAILABLE
+    http: 503
+    path: bid
+    retryable: true
+    details: []
+    condition: "Orchestrator unreachable and no cached state under 2 s old; the bid is deliberately not accepted."

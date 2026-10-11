@@ -1,0 +1,184 @@
+openapi: 3.1.0
+info:
+  title: ZeoAuction Bid Processing API
+  version: 1.0.0
+  description: |
+    Published contract for Bid Processing (owner: Naitik, Jira #18). Frozen at the end of
+    Plan 1; the SPA, third-party integrators and the tests all code against this file.
+
+    The hot path (SDD 5.1.1): idempotency guard -> validation -> server_seq allocation ->
+    Redis compare-and-set -> batch + publish to bid.events -> 202. Durable persistence and
+    WebSocket fan-out happen after the acknowledgement.
+
+    Rejection codes are listed in contracts/errors/bid-rejection-codes.yaml. Adding a code is
+    a minor version bump; changing the meaning of one is a breaking change (/api/v2).
+
+    Required interfaces (synchronous, circuit-broken, contract-tested):
+      - CT-1 auction state:  contracts/openapi/internal/auction-state.v1.yaml
+      - CT-3 min increment:  contracts/openapi/internal/pricing.v1.yaml
+servers:
+  - url: /api/v1
+tags:
+  - name: bids
+paths:
+  /auctions/{auctionId}/bids:
+    parameters:
+      - $ref: '#/components/parameters/AuctionId'
+    post:
+      operationId: placeBid
+      tags: [bids]
+      summary: Place a bid on an open auction
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: 'common.v1.yaml#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PlaceBidRequest' }
+      responses:
+        '202':
+          description: Bid accepted and sequenced.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BidAccepted' }
+        '200':
+          description: >
+            Replay of an earlier submission with the same Idempotency-Key
+            (DUPLICATE_IDEMPOTENCY_KEY). The body is the original acceptance, and the
+            Idempotent-Replay header is "true". A replayed rejection returns the original
+            rejection instead.
+          headers:
+            Idempotent-Replay:
+              schema: { type: string, const: 'true' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BidAccepted' }
+        '401': { $ref: 'common.v1.yaml#/components/responses/Unauthenticated' }
+        '402': { $ref: '#/components/responses/InsufficientFunds' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: 'common.v1.yaml#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/AuctionNotOpen' }
+        '422': { $ref: '#/components/responses/BidBelowIncrement' }
+        '503': { $ref: '#/components/responses/StateUnavailable' }
+    get:
+      operationId: listBids
+      tags: [bids]
+      summary: Bid history for an auction, newest first (by server_seq)
+      security: []
+      parameters:
+        - $ref: 'common.v1.yaml#/components/parameters/PageNumber'
+        - $ref: 'common.v1.yaml#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: One page of accepted bids.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BidPage' }
+        '404': { $ref: 'common.v1.yaml#/components/responses/NotFound' }
+  /bids/{bidId}:
+    get:
+      operationId: getBid
+      tags: [bids]
+      summary: One of the caller's own bids
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: bidId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The bid.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Bid' }
+        '401': { $ref: 'common.v1.yaml#/components/responses/Unauthenticated' }
+        '404': { $ref: 'common.v1.yaml#/components/responses/NotFound' }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    AuctionId:
+      name: auctionId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  schemas:
+    PlaceBidRequest:
+      type: object
+      additionalProperties: false
+      required: [amount]
+      properties:
+        amount: { $ref: 'common.v1.yaml#/components/schemas/Money' }
+        device_fingerprint:
+          type: string
+          maxLength: 256
+          description: Opaque client signal consumed by fraud scoring.
+    BidAccepted:
+      type: object
+      required: [bid_id, auction_id, server_seq, current_price, min_next_bid, accepted_at]
+      properties:
+        bid_id: { type: string, format: uuid }
+        auction_id: { type: string, format: uuid }
+        server_seq: { type: integer, format: int64, minimum: 1 }
+        current_price: { $ref: 'common.v1.yaml#/components/schemas/Money' }
+        min_next_bid: { $ref: 'common.v1.yaml#/components/schemas/Money' }
+        accepted_at: { type: string, format: date-time }
+    Bid:
+      type: object
+      required: [bid_id, auction_id, amount, server_seq, accepted_at]
+      properties:
+        bid_id: { type: string, format: uuid }
+        auction_id: { type: string, format: uuid }
+        amount: { $ref: 'common.v1.yaml#/components/schemas/Money' }
+        server_seq: { type: integer, format: int64, minimum: 1 }
+        accepted_at: { type: string, format: date-time }
+        bidder_alias:
+          type: string
+          description: Stable per-auction pseudonym; bidder ids are never public.
+    BidPage:
+      allOf:
+        - $ref: 'common.v1.yaml#/components/schemas/Page'
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/Bid' }
+  responses:
+    InsufficientFunds:
+      description: INSUFFICIENT_FUNDS — the funds check failed.
+      content:
+        application/json:
+          schema: { $ref: 'common.v1.yaml#/components/schemas/Error' }
+    Forbidden:
+      description: >
+        ACCOUNT_SUSPENDED or SELF_BIDDING_FORBIDDEN (bidder is the seller of the auction).
+      content:
+        application/json:
+          schema: { $ref: 'common.v1.yaml#/components/schemas/Error' }
+    AuctionNotOpen:
+      description: >
+        AUCTION_NOT_OPEN (state is not OPEN or EXTENDED) or AUCTION_CLOSED (closed between
+        validation and resolution).
+      content:
+        application/json:
+          schema: { $ref: 'common.v1.yaml#/components/schemas/Error' }
+    BidBelowIncrement:
+      description: >
+        BID_BELOW_INCREMENT (details.min_next_bid carries the minimum), or VALIDATION_ERROR
+        for a malformed request.
+      content:
+        application/json:
+          schema: { $ref: 'common.v1.yaml#/components/schemas/Error' }
+    StateUnavailable:
+      description: >
+        AUCTION_STATE_UNAVAILABLE — the orchestrator is unreachable and no cached state under
+        2 seconds old exists, so the bid is deliberately not accepted.
+      content:
+        application/json:
+          schema: { $ref: 'common.v1.yaml#/components/schemas/Error' }
