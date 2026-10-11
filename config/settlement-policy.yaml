@@ -1,0 +1,40 @@
+# Settlement policy — the fixed rules the implementation must enforce (proposal section 5).
+# Owners: Jaydip (Payment) and Sumit (Orchestration). Decision record: docs/adr/0011-settlement-policy.md
+# STATUS: Proposed. Values below are the team's starting proposal and become binding when
+# ADR-0011 is accepted at the end of Plan 1. They must be fixed BEFORE any settlement code
+# is written (SDD 1.3).
+#
+# The payment schema seeds payment.fee_config from these values
+# (infra/postgres/init/60-payment.sql); tests/contracts/test_settlement_policy.py keeps the
+# two in sync.
+
+convenience_fee:
+  fee_version: "2026-08-v1"
+  amount: "25.00"          # flat amount per completed sale, never a percentage
+  currency: "USD"          # USD if Stripe, INR if Razorpay is chosen (ADR-0009)
+  disclosed_before_bid: true
+  charged_to_losing_bidders: false
+
+protection_window:
+  days: 7                  # starts when the seller marks the item shipped
+  sweep_interval_seconds: 60
+  sweep_max_lag_seconds: 300   # AC-12: release within 5 minutes of expiry
+
+refund_fee_treatment:      # SDD Table 6.3 (FR-PAY-9)
+  BUYER: RETAIN_FEE        # platform performed the service it charged for
+  SELLER: REFUND_FEE       # buyer should not pay a fee for a transaction the seller failed
+  PLATFORM: REFUND_FEE     # platform bears the cost of its own failure
+
+release_triggers:
+  - BUYER_CONFIRMS_RECEIPT     # immediate
+  - WINDOW_EXPIRED_NO_DISPUTE  # escrow-sweep cron
+  - ADJUDICATED_FOR_SELLER     # administrator
+
+anti_snipe:
+  guard_interval_seconds: 120  # a bid in the last 2 minutes extends the auction
+  extension_seconds: 120
+  max_extensions: 10           # caps a bidding war
+
+capture_retry:                 # SDD Table 2.2, Orchestration -> Payment breaker
+  breaker_failures: 3
+  breaker_window_seconds: 30
