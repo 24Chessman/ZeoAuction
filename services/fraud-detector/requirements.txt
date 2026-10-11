@@ -1,1 +1,2 @@
 # Service-specific runtime dependencies. zeo-common is installed separately.
+aiokafka>=0.11
