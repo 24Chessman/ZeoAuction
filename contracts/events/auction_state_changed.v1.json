@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://zeoauction.local/contracts/events/auction_state_changed.v1.json",
+  "title": "AuctionStateChanged v1",
+  "description": "Published to auction.events (key: auction_id) for every lifecycle transition in docs/state-machines.md. Drives WebSocket auction_extended / auction_closed messages, the search projection and settlement. Owner: Sumit.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["event_id", "schema_version", "auction_id", "event", "from_state", "to_state", "occurred_at"],
+  "properties": {
+    "event_id": { "type": "string", "format": "uuid" },
+    "schema_version": { "const": 1 },
+    "auction_id": { "type": "string", "format": "uuid", "description": "Partition key." },
+    "event": {
+      "enum": ["publish", "open", "extend", "settleWindow", "close", "settle", "cancel"]
+    },
+    "from_state": {
+      "type": ["string", "null"],
+      "enum": [null, "DRAFT", "SCHEDULED", "OPEN", "EXTENDED", "CLOSING", "CLOSED", "SETTLED", "CANCELLED"]
+    },
+    "to_state": {
+      "enum": ["DRAFT", "SCHEDULED", "OPEN", "EXTENDED", "CLOSING", "CLOSED", "SETTLED", "CANCELLED"]
+    },
+    "closes_at": { "type": ["string", "null"], "format": "date-time" },
+    "extension_count": { "type": "integer", "minimum": 0 },
+    "winning_bid_id": { "type": ["string", "null"], "format": "uuid" },
+    "actor_id": { "type": ["string", "null"], "format": "uuid" },
+    "occurred_at": { "type": "string", "format": "date-time" }
+  }
+}

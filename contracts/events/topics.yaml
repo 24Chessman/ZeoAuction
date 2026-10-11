@@ -1,0 +1,45 @@
+# Kafka topic topology (SDD 2.5, Table 2.3). Owner: Sumit (#29), agreed with Harshal (#50).
+# infra/kafka/create-topics.sh creates exactly these; tests/contracts/test_topics.py keeps the
+# two in sync. Single broker, so replication factor is 1 everywhere (proposal risk table).
+version: 1
+topics:
+  - name: bid.events
+    partitions: 12
+    key: auction_id
+    retention_days: 7
+    cleanup_policy: delete
+    schemas: [bid_accepted.v1.json]
+    producers: [bid]
+    consumer_groups: [bid-flusher, ws-gateway, fraud-detector, pricing, search-analytics, auction-orchestrator]
+    rationale: >
+      Highest volume; sized for 1000 bids/s aggregate with headroom. Keyed by auction_id so
+      every bid for one auction lands on one partition in server_seq order: replay reproduces
+      the same winner (AC-04) and the fraud consumer never re-sorts. auction-orchestrator
+      (added in Plan 3) applies anti-snipe (A4) and tracks the leader for the drained winner (A6).
+  - name: auction.events
+    partitions: 6
+    key: auction_id
+    retention_days: 7
+    cleanup_policy: delete
+    schemas: [auction_state_changed.v1.json]
+    producers: [auction-orchestrator]
+    consumer_groups: [ws-gateway, search-analytics, fraud-detector, payment-escrow]
+    rationale: Lifecycle transitions; low volume, but ordering per auction matters.
+  - name: payment.events
+    partitions: 6
+    key: order_id
+    retention_days: 30
+    cleanup_policy: compact,delete
+    schemas: [settlement_step.v1.json]
+    producers: [payment-escrow]
+    consumer_groups: [auction-orchestrator, search-analytics, ws-gateway]
+    rationale: Settlement audit trail; compaction keeps the latest state per order for projection rebuilds.
+  - name: fraud.alerts
+    partitions: 3
+    key: auction_id
+    retention_days: 30
+    cleanup_policy: delete
+    schemas: [shill_alert.v1.json]
+    producers: [fraud-detector]
+    consumer_groups: [dispute, admin-moderation]
+    rationale: Low volume; retained long enough to correlate with adjudicated disputes.

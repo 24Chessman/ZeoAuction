@@ -1,0 +1,61 @@
+openapi: 3.1.0
+info:
+  title: ZeoAuction internal contract CT-1 — auction state
+  version: 1.0.0
+  description: |
+    Provider: Auction Orchestration (owner: Sumit). Consumer: Bid Processing (Naitik).
+    Pins the state response shape and the set of states that permit a bid (SDD 7.10).
+    Consumer-driven contract tests fail CI if either side changes this shape (Plan 7, #26).
+
+    Consumer circuit breaker (SDD Table 2.2): opens after 5 failures in 10 s; while open,
+    use cached state under 2 s old, otherwise reject with AUCTION_STATE_UNAVAILABLE.
+servers:
+  - url: /api/v1
+paths:
+  /auctions/{auctionId}/state:
+    get:
+      operationId: getAuctionState
+      summary: Current lifecycle state of one auction (internal, not exposed publicly)
+      parameters:
+        - name: auctionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Current state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuctionState' }
+        '404':
+          description: Unknown auction (NOT_FOUND).
+          content:
+            application/json:
+              schema: { $ref: '../common.v1.yaml#/components/schemas/Error' }
+components:
+  schemas:
+    AuctionState:
+      type: object
+      additionalProperties: false
+      required: [auction_id, seller_id, state, bid_permitted, currency, closes_at, as_of]
+      properties:
+        auction_id: { type: string, format: uuid }
+        seller_id:
+          type: string
+          format: uuid
+          description: Lets the consumer enforce SELF_BIDDING_FORBIDDEN without another call.
+        state:
+          type: string
+          enum: [DRAFT, SCHEDULED, OPEN, EXTENDED, CLOSING, CLOSED, SETTLED, CANCELLED]
+        bid_permitted:
+          type: boolean
+          description: True exactly when state is OPEN or EXTENDED.
+        currency: { $ref: '../common.v1.yaml#/components/schemas/Currency' }
+        starting_price: { $ref: '../common.v1.yaml#/components/schemas/Money' }
+        closes_at:
+          type: [string, "null"]
+          format: date-time
+        as_of:
+          type: string
+          format: date-time
+          description: When this snapshot was read; the consumer's cache is valid for 2 s.

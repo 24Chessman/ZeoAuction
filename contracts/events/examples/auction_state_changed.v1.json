@@ -1,0 +1,13 @@
+{
+  "event_id": "a0c1d2e3-f405-4a6b-8c7d-9e0f1a2b3c4d",
+  "schema_version": 1,
+  "auction_id": "00000000-0000-4000-8000-000000000201",
+  "event": "extend",
+  "from_state": "OPEN",
+  "to_state": "EXTENDED",
+  "closes_at": "2026-08-22T10:02:00Z",
+  "extension_count": 1,
+  "winning_bid_id": null,
+  "actor_id": null,
+  "occurred_at": "2026-08-22T09:59:10Z"
+}
