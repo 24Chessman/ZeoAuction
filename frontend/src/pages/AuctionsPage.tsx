@@ -5,7 +5,8 @@ import { useMocks } from "@/lib/config";
 import { cn } from "@/lib/cn";
 import { describeError } from "@/lib/errors";
 import { titleCase } from "@/lib/format";
-import { parseMoney, type Cents } from "@/lib/money";
+import { formatMoney, parseMoney, type Cents } from "@/lib/money";
+import { policy } from "@/lib/policy";
 import { useAsync } from "@/lib/useAsync";
 import { Banner, Button, EmptyState, Input, PageHeader } from "@/components/ui";
 import { AuctionCard, AuctionCardSkeleton } from "@/components/auction/AuctionCard";
@@ -67,7 +68,7 @@ export function AuctionsPage() {
       <PageHeader
         eyebrow="Marketplace"
         title="Auctions"
-        description="Every listing comes from a verified seller, and the flat fee is shown before you bid."
+        description={`Every listing comes from a verified seller. If you win, you pay your bid plus a flat ${formatMoney(policy.feeCents, policy.currency)} fee; losing bids cost nothing.`}
       />
 
       <div className="mt-8 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
