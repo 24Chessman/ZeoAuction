@@ -13,8 +13,6 @@ window, and a streaming detector flags shill bidding before the auction closes.
 | Path | What |
 |---|---|
 | `project_docs/` | Proposal, System Design Document (SDD), Jira timeline |
-| `planing/` | The 8 implementation plans (two-week windows) |
-| `commits/` | Who commits what, per plan |
 | `services/` | 13 deployable services (10 APIs, 2 workers, 1 cron) |
 | `libs/zeo-common/` | The service template every service is created from |
 | `contracts/` | Frozen API and event contracts that services code against |
