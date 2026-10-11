@@ -1,0 +1,83 @@
+openapi: 3.1.0
+info:
+  title: ZeoAuction shared API components
+  version: 1.0.0
+  description: >
+    Components every ZeoAuction API references (SDD 7.1). Owner: Sumit (Documentation).
+    Changes follow the versioning rule in contracts/README.md.
+paths: {}
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        Access token (15 minutes) carrying sub, role, kyc_status and suspended claims.
+  schemas:
+    Error:
+      type: object
+      description: Uniform error envelope returned by every endpoint (SDD 7.1.1).
+      required: [code, message, request_id]
+      properties:
+        code:
+          type: string
+          description: Stable machine-readable code. Clients switch on this, never on message.
+          examples: [BID_BELOW_INCREMENT]
+        message:
+          type: string
+          examples: ["Minimum next bid is 1250.00"]
+        details:
+          type: [object, "null"]
+        request_id:
+          type: string
+          format: uuid
+    Money:
+      type: string
+      description: Decimal string with exactly two places. Never a float.
+      pattern: '^(0|[1-9]\d{0,9})\.\d{2}$'
+      examples: ["1250.00"]
+    Currency:
+      type: string
+      pattern: '^[A-Z]{3}$'
+      examples: ["USD"]
+    Page:
+      type: object
+      required: [page, page_size, total]
+      properties:
+        page: { type: integer, minimum: 1 }
+        page_size: { type: integer, minimum: 1, maximum: 100 }
+        total: { type: integer, minimum: 0 }
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: >
+        Client-generated key, unique per logical submission. A retry with the same key returns
+        the original result and has no second effect.
+      schema: { type: string, minLength: 8, maxLength: 80 }
+    PageNumber:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    PageSize:
+      name: page_size
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+  responses:
+    Unauthenticated:
+      description: Missing, expired or invalid bearer token (UNAUTHENTICATED).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ValidationError:
+      description: Request failed validation (VALIDATION_ERROR).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Resource does not exist (NOT_FOUND).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
