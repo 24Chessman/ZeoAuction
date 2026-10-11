@@ -7,7 +7,7 @@ import { BIDDABLE, checkBid, tierIncrement } from "@/lib/bidRules";
 import { cn } from "@/lib/cn";
 import { ApiError, describeError } from "@/lib/errors";
 import { formatDateTime } from "@/lib/format";
-import { formatMoney, parseMoney, parseMoneyInput, toMoneyString, type Cents } from "@/lib/money";
+import { currencySymbol, formatMoney, parseMoney, parseMoneyInput, toMoneyString, type Cents } from "@/lib/money";
 import { duration, policy } from "@/lib/policy";
 import { Banner, Button, ButtonLink, Countdown } from "@/components/ui";
 import type { AuctionLive } from "./useAuctionLive";
@@ -207,7 +207,7 @@ export function BidPanel({ state }: { state: AuctionLive }) {
           <form onSubmit={submit} noValidate>
             <label htmlFor="bid-amount" className="text-[13px] font-medium">Your bid</label>
             <div className="relative mt-1.5">
-              <span className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-lg font-medium text-ink-faint">{currency === "USD" ? "$" : currency}</span>
+              <span className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-lg font-medium text-ink-faint">{currencySymbol(currency)}</span>
               <input
                 id="bid-amount"
                 inputMode="decimal"

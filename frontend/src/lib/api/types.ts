@@ -149,3 +149,74 @@ export interface ErrorEnvelope {
 }
 
 export type KycFiles = Partial<Record<DocType, File>>;
+
+/** Order states, docs/state-machines.md section 2 (contracts/openapi/payment.v1.yaml). */
+export type OrderState =
+  | "INVOICED" | "AUTHORIZED" | "AWAITING_CAPTURE_RETRY" | "CAPTURED" | "IN_ESCROW"
+  | "SHIPPED" | "DISPUTED" | "RELEASED" | "REFUNDED" | "CANCELLED";
+
+export interface Invoice {
+  invoice_number: string;
+  bid_amount: string;
+  convenience_fee: string;
+  total: string;
+  currency: string;
+  fee_version: string;
+  issued_at: string;
+  voided_at: string | null;
+}
+
+export interface Order {
+  order_id: string;
+  auction_id: string;
+  buyer_id: string;
+  seller_id: string;
+  winning_bid_id: string;
+  state: OrderState;
+  winning_bid_amount: string;
+  convenience_fee: string;
+  total: string;
+  currency: string;
+  fee_version: string;
+  provider: "razorpay" | "mock";
+  payment_due_at: string | null;
+  authorized_at: string | null;
+  created_at: string;
+  updated_at: string;
+  invoice: Invoice;
+  test_mode: true;
+  notice: string;
+}
+
+/** What the browser opens Checkout with (POST /orders/{id}/checkout). */
+export interface CheckoutSession {
+  order_id: string;
+  provider: "razorpay" | "mock";
+  key_id: string | null;
+  provider_order_id: string;
+  amount: string;
+  amount_minor: number;
+  currency: string;
+  description: string;
+  simulated_payment: { payment_id: string; signature: string } | null;
+  test_mode: true;
+}
+
+/** Checkout's signed result, handed back to POST /orders/{id}/payment. */
+export interface PaymentConfirmation {
+  provider_order_id: string;
+  payment_id: string;
+  signature: string;
+}
+
+/** One append-only escrow ledger row (GET /orders/{id}/ledger, admins). Negative = out of custody. */
+export interface LedgerEntry {
+  id: number | null;
+  entry_type: "CAPTURE" | "HOLD" | "FEE_RETAIN" | "RELEASE" | "REFUND" | "COMPENSATION";
+  amount: string;
+  currency: string;
+  idempotency_key: string;
+  provider_ref: string | null;
+  note: string | null;
+  created_at: string | null;
+}

@@ -1,12 +1,13 @@
-import type { Auction, AuctionState, DocType, ErrorEnvelope, KycStatus, Profile } from "../api/types";
+import type { Auction, AuctionState, CheckoutSession, DocType, ErrorEnvelope, KycStatus, LedgerEntry, Order, Profile } from "../api/types";
 import type { TransportRequest, TransportResponse } from "../api/http";
 import { minimumNextBid } from "../bidRules";
 import { parseMoney, toMoneyString } from "../money";
+import { BridgeError, paymentBridge, type PaymentBridge } from "../payments/devBridge";
 import { policy } from "../policy";
-import { ids, seedState, type MockBid, type MockDocument, type MockState, type MockSubmission, type MockUser } from "./seed";
+import { ids, seedState, type MockBid, type MockDocument, type MockOrder, type MockState, type MockSubmission, type MockUser } from "./seed";
 
 /**
- * An in-browser simulation of the Plan 1–3 services, used when VITE_USE_MOCKS is on. Routes,
+ * An in-browser simulation of the Plan 1–4 services, used when VITE_USE_MOCKS is on. Routes,
  * status codes and error codes follow the real services so the UI code path is the same.
  * State is kept in localStorage and live events cross tabs on a BroadcastChannel, so two
  * windows watching one auction see each other's bids.
@@ -60,6 +61,8 @@ export class MockServer {
   private readonly claims = new Map<string, number>();
   /** Simulated network latency range in ms; tests set it to [0, 0]. */
   latency: [number, number] = [120, 300];
+  /** Real Razorpay test mode through the dev server, when it has keys; null simulates Checkout. */
+  payments: () => Promise<PaymentBridge | null> = () => paymentBridge();
 
   constructor(private readonly storage: Storage | null = safeStorage()) {
     this.state = this.load();
@@ -78,8 +81,10 @@ export class MockServer {
     try {
       const raw = this.storage?.getItem(STORE_KEY);
       if (raw) {
-        const parsed = JSON.parse(raw) as MockState;
-        if (parsed.version === 1) return parsed;
+        const parsed = JSON.parse(raw) as MockState | (Omit<MockState, "version" | "orders"> & { version: 1 });
+        if (parsed.version === 2) return parsed;
+        // Plan 4 added orders; keep everything else a tester made.
+        if (parsed.version === 1) return { ...parsed, version: 2, orders: [] };
       }
     } catch {
       // fall through to a fresh seed
@@ -101,7 +106,10 @@ export class MockServer {
   sync(): void {
     try {
       const raw = this.storage?.getItem(STORE_KEY);
-      if (raw) this.state = JSON.parse(raw) as MockState;
+      if (raw) {
+        const parsed = JSON.parse(raw) as MockState;
+        if (parsed.version === 2) this.state = parsed;
+      }
     } catch {
       // keep the in-memory state
     }
@@ -160,6 +168,11 @@ export class MockServer {
       }
       if ((auction.state === "OPEN" || auction.state === "EXTENDED") && auction.closes_at && Date.parse(auction.closes_at) <= at) {
         this.closeAuction(auction);
+        changed = true;
+      }
+      // Saga S1 (CT-4): the orchestrator hands every closed auction with a winner to Payment.
+      if (auction.state === "CLOSED" && auction.winning_bid_id && !this.state.orders.some((o) => o.auction_id === auction.auction_id)) {
+        this.openOrder(auction, at);
         changed = true;
       }
     }
@@ -234,6 +247,17 @@ export class MockServer {
     if ((m = path.match(/^\/api\/v1\/auctions\/([^/]+)\/(publish|cancel|events)$/)) && req.method === "POST") {
       return ok(200, this.auctionCommand(req, m[1], m[2], json));
     }
+    if ((m = path.match(/^\/api\/v1\/auctions\/([^/]+)\/order$/)) && req.method === "GET") {
+      const auctionId = m[1];
+      return ok(200, this.orderView(req, this.state.orders.find((o) => o.auction_id === auctionId)));
+    }
+    if ((m = path.match(/^\/api\/v1\/orders\/([^/]+)$/)) && req.method === "GET") {
+      const orderId = m[1];
+      return ok(200, this.orderView(req, this.state.orders.find((o) => o.order_id === orderId)));
+    }
+    if ((m = path.match(/^\/api\/v1\/orders\/([^/]+)\/checkout$/)) && req.method === "POST") return ok(200, await this.checkout(req, m[1]));
+    if ((m = path.match(/^\/api\/v1\/orders\/([^/]+)\/payment$/)) && req.method === "POST") return ok(200, await this.confirmPayment(req, m[1], json));
+    if ((m = path.match(/^\/api\/v1\/orders\/([^/]+)\/ledger$/)) && req.method === "GET") return ok(200, this.ledger(req, m[1]));
     if ((m = path.match(/^\/api\/v1\/auctions\/([^/]+)\/bids$/))) {
       if (req.method === "GET") return ok(200, this.listBids(m[1], params));
       if (req.method === "POST") return this.placeBid(req, m[1], json);
@@ -534,6 +558,166 @@ export class MockServer {
     };
   }
 
+  // ---------------------------------------------------------------- orders (Plan 4, ADR-0009)
+
+  /** S1: order and invoice for the winning bid only, at the flat fee in force. */
+  private openOrder(auction: Auction, at: number): void {
+    const winner = this.state.bids.find((b) => b.bid_id === auction.winning_bid_id);
+    if (!winner) return;
+    const orderId = crypto.randomUUID();
+    const fee = toMoneyString(policy.feeCents);
+    const total = toMoneyString(winner.amount + policy.feeCents);
+    const issued = iso(at);
+    const invoiceNumber = `ZA-${issued.slice(0, 4)}${issued.slice(5, 7)}-${orderId.replace(/-/g, "").slice(0, 12).toUpperCase()}`;
+    this.state.orders.push({
+      order_id: orderId, auction_id: auction.auction_id, buyer_id: winner.bidder_id, seller_id: auction.seller_id,
+      winning_bid_id: winner.bid_id, state: "INVOICED", winning_bid_amount: toMoneyString(winner.amount),
+      convenience_fee: fee, total, currency: policy.currency, fee_version: policy.feeVersion,
+      provider: "mock", payment_due_at: iso(at + policy.paymentWindowHours * 3_600_000), authorized_at: null,
+      created_at: issued, updated_at: issued, test_mode: true,
+      notice: "Test mode: escrow is a simulation and no real money moves.",
+      invoice: {
+        invoice_number: invoiceNumber, bid_amount: toMoneyString(winner.amount), convenience_fee: fee, total,
+        currency: policy.currency, fee_version: policy.feeVersion, issued_at: issued, voided_at: null,
+      },
+      provider_order_id: null,
+    });
+  }
+
+  private orderView(req: TransportRequest, order: MockOrder | undefined): Order {
+    const caller = this.auth(req);
+    if (!order) throw new HttpError(404, "NOT_FOUND", "No order for this auction yet");
+    if (caller.role !== "ADMIN" && caller.id !== order.buyer_id && caller.id !== order.seller_id) {
+      throw new HttpError(403, "FORBIDDEN", "Only the buyer, the seller or an administrator can see this order");
+    }
+    const view: Order & Partial<Pick<MockOrder, "provider_order_id" | "ledger">> = { ...order };
+    delete view.provider_order_id;
+    delete view.ledger;
+    return view;
+  }
+
+  private buyersOrder(req: TransportRequest, orderId: string): MockOrder {
+    const caller = this.auth(req);
+    const order = this.state.orders.find((o) => o.order_id === orderId);
+    if (!order) throw new HttpError(404, "NOT_FOUND", `Order ${orderId} does not exist`);
+    if (caller.id !== order.buyer_id) throw new HttpError(403, "FORBIDDEN", "Only the winning bidder can pay this order");
+    return order;
+  }
+
+  /** Repeating checkout returns the same provider order. Real Razorpay (test) when the dev bridge is up. */
+  private async checkout(req: TransportRequest, orderId: string): Promise<CheckoutSession> {
+    const order = this.buyersOrder(req, orderId);
+    if (order.state !== "INVOICED") {
+      throw new HttpError(409, "ORDER_NOT_PAYABLE", `Order is ${order.state}; there is nothing to pay`, { state: order.state });
+    }
+    const description = `Invoice ${order.invoice.invoice_number} (test mode)`;
+    const bridge = await this.payments();
+    if (bridge && (order.provider_order_id === null || order.provider === "razorpay")) {
+      if (order.provider_order_id) return this.razorpaySession(order, bridge.keyId, description);
+      const created = await viaBridge(() => bridge.createOrder({
+        amount_minor: parseMoney(order.total), currency: order.currency, receipt: order.invoice.invoice_number,
+        notes: { order_id: order.order_id, auction_id: order.auction_id, environment: "zeoauction-mock-mode" },
+      }));
+      // The bridge call yielded: re-read storage so a write from another tab isn't lost.
+      this.sync();
+      const fresh = this.state.orders.find((o) => o.order_id === order.order_id) ?? order;
+      fresh.provider = "razorpay";
+      fresh.provider_order_id = created.provider_order_id;
+      fresh.updated_at = iso();
+      this.persist();
+      return this.razorpaySession(fresh, bridge.keyId, description);
+    }
+    if (order.provider === "razorpay") {
+      throw new HttpError(503, "PAYMENT_PROVIDER_UNAVAILABLE", "This order is paid through Razorpay test mode, and the dev server's bridge is off");
+    }
+    order.provider_order_id ??= `mock_order_${fakeDigest(order.order_id).slice(0, 14)}`;
+    this.persist();
+    const paymentId = `mock_pay_${fakeDigest(order.provider_order_id).slice(0, 14)}`;
+    return {
+      order_id: order.order_id, provider: "mock", key_id: "mock_key", provider_order_id: order.provider_order_id,
+      amount: order.total, amount_minor: parseMoney(order.total), currency: order.currency, description,
+      simulated_payment: { payment_id: paymentId, signature: mockSignature(order.provider_order_id, paymentId) },
+      test_mode: true,
+    };
+  }
+
+  private razorpaySession(order: MockOrder, keyId: string, description: string): CheckoutSession {
+    return {
+      order_id: order.order_id, provider: "razorpay", key_id: keyId, provider_order_id: order.provider_order_id!,
+      amount: order.total, amount_minor: parseMoney(order.total), currency: order.currency, description,
+      simulated_payment: null, test_mode: true,
+    };
+  }
+
+  /** Verify Checkout's signature, capture and hold (S2, S3), then A7 settle. */
+  private async confirmPayment(req: TransportRequest, orderId: string, body: Record<string, unknown>): Promise<Order> {
+    const order = this.buyersOrder(req, orderId);
+    const key = req.headers["Idempotency-Key"];
+    if (!key || key.length < 8) throw validation("Idempotency-Key", "Idempotency-Key header is required");
+    const providerOrder = String(body.provider_order_id ?? "");
+    const paymentId = String(body.payment_id ?? "");
+    if (!order.provider_order_id || providerOrder !== order.provider_order_id) {
+      throw new HttpError(400, "PAYMENT_SIGNATURE_INVALID", "The payment signature is invalid");
+    }
+    if (order.provider !== "razorpay" && body.signature !== mockSignature(providerOrder, paymentId)) {
+      throw new HttpError(400, "PAYMENT_SIGNATURE_INVALID", "The payment signature is invalid");
+    }
+    if (order.state !== "INVOICED") return this.orderView(req, order); // a retry after success
+
+    let outcome: { captured: boolean; ref: string };
+    if (order.provider === "razorpay") {
+      const bridge = await this.payments();
+      if (!bridge) throw new HttpError(503, "PAYMENT_PROVIDER_UNAVAILABLE", "The dev server's Razorpay bridge is off; nothing was captured");
+      const result = await viaBridge(() => bridge.capture({
+        provider_order_id: providerOrder, payment_id: paymentId, signature: String(body.signature ?? ""), amount_minor: parseMoney(order.total),
+      }));
+      outcome = { captured: result.status === "captured", ref: result.payment_id };
+      this.sync();
+    } else {
+      // The mock provider's test-card convention: a total ending in .13 is declined (O4).
+      outcome = { captured: !order.total.endsWith(".13"), ref: paymentId };
+    }
+
+    const current = this.state.orders.find((o) => o.order_id === order.order_id) ?? order;
+    if (current.state === "INVOICED") {
+      const at = iso();
+      current.authorized_at = at;
+      current.updated_at = at;
+      if (outcome.captured) {
+        current.state = "IN_ESCROW";
+        current.ledger = this.holdRows(current, outcome.ref, at);
+        const auction = this.state.auctions.find((a) => a.auction_id === current.auction_id);
+        if (auction?.state === "CLOSED") this.transition(auction, "SETTLED");
+      } else {
+        current.state = "CANCELLED";
+        current.invoice.voided_at = at;
+      }
+      this.persist();
+    }
+    return this.orderView(req, current);
+  }
+
+  /** S3: CAPTURE (+total), HOLD (0) and FEE_RETAIN (-fee), the rows payment-escrow appends. */
+  private holdRows(order: MockOrder, paymentRef: string, at: string): LedgerEntry[] {
+    const row = (id: number, entry_type: LedgerEntry["entry_type"], amount: string, note: string): LedgerEntry => ({
+      id, entry_type, amount, currency: order.currency, idempotency_key: `order:${order.order_id}:${entry_type.toLowerCase()}`,
+      provider_ref: entry_type === "CAPTURE" ? paymentRef : null, note, created_at: at,
+    });
+    return [
+      row(1, "CAPTURE", order.total, "Winner's payment captured into custody"),
+      row(2, "HOLD", "0.00", `Held in escrow for the ${policy.protectionDays}-day protection window`),
+      row(3, "FEE_RETAIN", `-${order.convenience_fee}`, `Convenience fee (${order.fee_version}) retained by the platform`),
+    ];
+  }
+
+  /** The order's escrow ledger, admins only (getOrderLedger). */
+  private ledger(req: TransportRequest, orderId: string): LedgerEntry[] {
+    this.admin(req);
+    const order = this.state.orders.find((o) => o.order_id === orderId);
+    if (!order) throw new HttpError(404, "NOT_FOUND", `Order ${orderId} does not exist`);
+    return order.ledger ?? [];
+  }
+
   // ---------------------------------------------------------------- KYC
 
   private latestSubmission(userId: string): MockSubmission | null {
@@ -663,6 +847,16 @@ export class MockServer {
   }
 }
 
+/** Bridge errors come back in the services' envelope; anything else means the bridge is unreachable. */
+async function viaBridge<T>(call: () => Promise<T>): Promise<T> {
+  try {
+    return await call();
+  } catch (error) {
+    if (error instanceof BridgeError) throw new HttpError(error.status, error.code, error.message);
+    throw new HttpError(503, "PAYMENT_PROVIDER_UNAVAILABLE", "Can't reach Razorpay test mode; nothing was charged");
+  }
+}
+
 function ok(status: number, body: unknown): TransportResponse {
   return { status, headers: {}, body };
 }
@@ -677,6 +871,10 @@ function safeStorage(): Storage | null {
   } catch {
     return null;
   }
+}
+
+function mockSignature(providerOrderId: string, paymentId: string): string {
+  return fakeDigest(`checkout:${providerOrderId}|${paymentId}`);
 }
 
 function fakeDigest(seed: string): string {

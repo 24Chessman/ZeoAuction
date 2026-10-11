@@ -109,7 +109,7 @@ function UserMenu() {
           </div>
           <div className="my-1 h-px bg-line" />
           <Link role="menuitem" to="/account" onClick={() => setOpen(false)} className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-ink-muted hover:bg-surface-2 hover:text-ink">
-            <User className="size-4" aria-hidden /> Account
+            <User className="size-4" aria-hidden /> Account and orders
           </Link>
           <Link role="menuitem" to="/sell/verify" onClick={() => setOpen(false)} className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-ink-muted hover:bg-surface-2 hover:text-ink">
             <ShieldCheck className="size-4" aria-hidden /> Seller verification

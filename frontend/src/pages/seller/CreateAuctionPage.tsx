@@ -5,7 +5,7 @@ import { useAuth } from "@/app/auth";
 import { auctionApi, type CreateAuction } from "@/lib/api";
 import { describeError, errorField } from "@/lib/errors";
 import { titleCase } from "@/lib/format";
-import { formatMoney, parseMoneyInput, toMoneyString } from "@/lib/money";
+import { currencySymbol, formatMoney, parseMoneyInput, toMoneyString } from "@/lib/money";
 import { duration, policy } from "@/lib/policy";
 import { Banner, Button, Card, CardBody, CardHeader, Field, Input, PageHeader, Select, Textarea, useToast } from "@/components/ui";
 import { AuctionArt } from "@/components/auction/AuctionArt";
@@ -46,7 +46,7 @@ export function CreateAuctionPage() {
       starting_price: startingCents === null ? "Enter a starting price, like 100.00" : null,
       reserve_price:
         reserve.trim() && reserveCents === null
-          ? "Enter an amount, like 150.00"
+          ? "Enter an amount, like 8000.00"
           : reserveCents !== null && startingCents !== null && reserveCents < startingCents
             ? "The reserve can't be below the starting price"
             : null,
@@ -129,10 +129,10 @@ export function CreateAuctionPage() {
             <CardHeader title="Pricing" description={`Prices are in ${policy.currency}.`} />
             <CardBody className="grid gap-5 sm:grid-cols-2">
               <Field label="Starting price" error={show("starting_price")} hint="The first bid must be at least this.">
-                {(p) => <Input {...p} inputMode="decimal" value={starting} onChange={(e) => setStarting(e.target.value)} placeholder="100.00" leading={<span className="text-sm">$</span>} />}
+                {(p) => <Input {...p} inputMode="decimal" value={starting} onChange={(e) => setStarting(e.target.value)} placeholder="8000.00" leading={<span className="text-sm">{currencySymbol(policy.currency)}</span>} />}
               </Field>
               <Field label="Reserve price" optional error={show("reserve_price")} hint="Never shown to bidders, only whether it's met.">
-                {(p) => <Input {...p} inputMode="decimal" value={reserve} onChange={(e) => setReserve(e.target.value)} placeholder="150.00" leading={<span className="text-sm">$</span>} />}
+                {(p) => <Input {...p} inputMode="decimal" value={reserve} onChange={(e) => setReserve(e.target.value)} placeholder="12000.00" leading={<span className="text-sm">{currencySymbol(policy.currency)}</span>} />}
               </Field>
             </CardBody>
           </Card>
@@ -162,7 +162,7 @@ export function CreateAuctionPage() {
                 <Eye className="size-3.5" aria-hidden /> Preview
               </p>
               <p className="mt-2 line-clamp-2 font-semibold">{title.trim() || "Your auction title"}</p>
-              <p className="tnum mt-3 text-2xl font-semibold tracking-[-0.02em]">{startingCents !== null ? formatMoney(startingCents, policy.currency) : "$0.00"}</p>
+              <p className="tnum mt-3 text-2xl font-semibold tracking-[-0.02em]">{startingCents !== null ? formatMoney(startingCents, policy.currency) : formatMoney(0, policy.currency)}</p>
               <p className="text-xs text-ink-faint">Starting price</p>
             </div>
           </Card>

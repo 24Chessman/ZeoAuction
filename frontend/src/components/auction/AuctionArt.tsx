@@ -1,9 +1,11 @@
+import { useState } from "react";
 import { Armchair, BookOpen, Camera, Cpu, Gem, Music, Package, Palette, Watch, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { photoFor } from "@/lib/photos";
 
 /**
- * Listings have no images in the API yet, so each one gets a generated cover: a category
- * glyph on a gradient seeded by the auction id. Never a stock photo pretending to be the item.
+ * A listing's cover: its stock photo (src/lib/photos.ts). Until the photo loads, or if it fails,
+ * a generated cover shows instead: a category glyph on a gradient seeded by the auction id.
  */
 const CATEGORY: Record<string, { icon: LucideIcon; hues: [number, number] }> = {
   cameras: { icon: Camera, hues: [250, 200] },
@@ -26,7 +28,18 @@ export function categoryIcon(category: string): LucideIcon {
   return CATEGORY[category.toLowerCase()]?.icon ?? Package;
 }
 
-export function AuctionArt({ id, category, className, size = "md" }: { id: string; category: string; className?: string; size?: "sm" | "md" | "lg" }) {
+interface Props {
+  id: string;
+  category: string;
+  className?: string;
+  size?: "sm" | "md" | "lg";
+  /** Above-the-fold covers load eagerly; grids load lazily. */
+  priority?: boolean;
+}
+
+export function AuctionArt({ id, category, className, size = "md", priority = false }: Props) {
+  const photo = photoFor(id, category);
+  const [state, setState] = useState<"loading" | "loaded" | "failed">("loading");
   const entry = CATEGORY[category.toLowerCase()] ?? { icon: Package, hues: [250, 190] as [number, number] };
   const Icon = entry.icon;
   const s = seed(id);
@@ -37,31 +50,38 @@ export function AuctionArt({ id, category, className, size = "md" }: { id: strin
 
   return (
     <div
-      className={cn("relative isolate overflow-hidden", className)}
+      className={cn("relative isolate overflow-hidden bg-surface-2", className)}
       style={{
         background: `radial-gradient(120% 90% at ${x}% ${y}%, hsl(${a} 90% 72% / .95), transparent 60%),
                      radial-gradient(90% 90% at ${100 - x}% ${100 - y}%, hsl(${b} 85% 62% / .9), transparent 65%),
                      linear-gradient(135deg, hsl(${a} 70% 30%), hsl(${b} 65% 22%))`,
       }}
-      aria-hidden
     >
-      <div
-        className="absolute inset-0 opacity-[0.18] mix-blend-overlay"
-        style={{
-          backgroundImage: "linear-gradient(rgba(255,255,255,.6) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.6) 1px, transparent 1px)",
-          backgroundSize: "28px 28px",
-        }}
-      />
-      <Icon
-        className={cn(
-          "absolute text-white/85 drop-shadow-[0_8px_24px_rgba(0,0,0,.25)]",
-          size === "sm" && "bottom-3 right-3 size-8",
-          size === "md" && "bottom-5 right-5 size-14",
-          size === "lg" && "bottom-8 right-8 size-24",
-        )}
-        strokeWidth={1.25}
-      />
-      <Icon className="absolute -left-6 -top-6 size-40 text-white/10" strokeWidth={0.75} />
+      {state !== "loaded" && (
+        <div aria-hidden>
+          <Icon
+            className={cn(
+              "absolute text-white/85 drop-shadow-[0_8px_24px_rgba(0,0,0,.25)]",
+              size === "sm" && "bottom-3 right-3 size-8",
+              size === "md" && "bottom-5 right-5 size-14",
+              size === "lg" && "bottom-8 right-8 size-24",
+            )}
+            strokeWidth={1.25}
+          />
+          <Icon className="absolute -left-6 -top-6 size-40 text-white/10" strokeWidth={0.75} />
+        </div>
+      )}
+      {state !== "failed" && (
+        <img
+          src={photo.src}
+          alt={size === "lg" ? photo.alt : ""}
+          loading={priority ? "eager" : "lazy"}
+          decoding="async"
+          onLoad={() => setState("loaded")}
+          onError={() => setState("failed")}
+          className={cn("absolute inset-0 size-full object-cover transition-opacity duration-500", state === "loaded" ? "opacity-100" : "opacity-0")}
+        />
+      )}
     </div>
   );
 }

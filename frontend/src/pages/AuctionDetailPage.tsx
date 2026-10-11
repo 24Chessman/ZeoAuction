@@ -6,6 +6,7 @@ import { describeError } from "@/lib/errors";
 import { formatDateTime, titleCase } from "@/lib/format";
 import { formatMoney, parseMoney } from "@/lib/money";
 import { duration, policy } from "@/lib/policy";
+import { photoFor } from "@/lib/photos";
 import { useAsync } from "@/lib/useAsync";
 import { AuctionStateBadge, Badge, Banner, ButtonLink, Skeleton } from "@/components/ui";
 import { AuctionArt } from "@/components/auction/AuctionArt";
@@ -14,6 +15,7 @@ import { BidPanel } from "@/components/auction/BidPanel";
 import { ReconnectBanner } from "@/components/auction/ReconnectBanner";
 import { useAuctionLive } from "@/components/auction/useAuctionLive";
 import { SellerAuctionActions } from "@/components/auction/SellerAuctionActions";
+import { SettlementPanel } from "@/components/auction/SettlementPanel";
 
 export function AuctionDetailPage() {
   const { auctionId = "" } = useParams();
@@ -48,6 +50,7 @@ function AuctionDetail({ auction: initial, bids: initialBids }: { auction: Aucti
   const reserveMet = reserve === null || (state.live.price !== null && state.live.price >= reserve);
   const extended = auction.extension_count > 0;
   const winning = auction.winning_bid_id ? bids.items.find((b) => b.bid_id === auction.winning_bid_id) : null;
+  const photo = photoFor(auction.auction_id, auction.category);
 
   return (
     <div className="mx-auto max-w-page px-4 pb-20 pt-6 sm:px-6">
@@ -62,9 +65,18 @@ function AuctionDetail({ auction: initial, bids: initialBids }: { auction: Aucti
       {/* Three blocks so the bid panel follows the title on phones and sits beside everything on desktop. */}
       <div className="mt-4 grid gap-8 lg:grid-cols-[minmax(0,1fr)_400px] lg:gap-x-10">
         <div className="min-w-0 space-y-8 lg:col-start-1">
-          <div className="overflow-hidden rounded-3xl border border-line">
-            <AuctionArt id={auction.auction_id} category={auction.category} size="lg" className="aspect-[16/9]" />
-          </div>
+          <figure>
+            <div className="overflow-hidden rounded-3xl border border-line">
+              <AuctionArt id={auction.auction_id} category={auction.category} size="lg" priority className="aspect-[16/9]" />
+            </div>
+            <figcaption className="mt-2 text-xs text-ink-faint">
+              Stock photo by{" "}
+              <a href={photo.source} target="_blank" rel="noreferrer" className="underline decoration-line-strong underline-offset-2 hover:text-ink">
+                {photo.photographer} on Pexels
+              </a>
+              , for illustration. It isn't a photo of this item.
+            </figcaption>
+          </figure>
 
           <header>
             <div className="flex flex-wrap items-center gap-2">
@@ -80,7 +92,10 @@ function AuctionDetail({ auction: initial, bids: initialBids }: { auction: Aucti
           </header>
         </div>
 
-        <aside className="lg:sticky lg:top-24 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:self-start">
+        <aside className="space-y-4 lg:sticky lg:top-24 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:self-start">
+          {(auction.state === "CLOSED" || auction.state === "SETTLED") && auction.winning_bid_id && (
+            <SettlementPanel auction={auction} onSettled={() => void state.refresh()} />
+          )}
           <BidPanel state={state} />
         </aside>
 
@@ -91,8 +106,8 @@ function AuctionDetail({ auction: initial, bids: initialBids }: { auction: Aucti
             <Banner tone={winning ? "positive" : "info"} title={winning ? "Auction closed with a winner" : "Auction closed without bids"}>
               {winning ? (
                 <>
-                  Won by <span className="font-mono">{winning.bidder_alias}</span> at {formatMoney(parseMoney(winning.amount), auction.currency)}. The buyer's
-                  payment plus the flat fee is held in simulated escrow until delivery is confirmed.
+                  Won by <span className="font-mono">{winning.bidder_alias}</span> at {formatMoney(parseMoney(winning.amount), auction.currency)}. The winner pays
+                  the bid plus the flat fee in Razorpay Checkout (test mode), and it's held in simulated escrow until delivery is confirmed.
                 </>
               ) : (
                 "No order is created when an auction ends without bids."

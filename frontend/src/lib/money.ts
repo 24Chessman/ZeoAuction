@@ -32,12 +32,17 @@ export function parseMoneyInput(raw: string): Cents | null {
 
 const formatters = new Map<string, Intl.NumberFormat>();
 
-/** Display form, e.g. "$1,250.00". The currency comes from the API, never assumed. */
-export function formatMoney(cents: Cents, currency = "USD", opts: { compact?: boolean } = {}): string {
+/** Rupees group in lakhs and crores ("₹1,25,000.00"); other currencies use en-US grouping. */
+function localeFor(currency: string): string {
+  return currency === "INR" ? "en-IN" : "en-US";
+}
+
+/** Display form, e.g. "₹1,250.00". The currency comes from the API, never assumed. */
+export function formatMoney(cents: Cents, currency = "INR", opts: { compact?: boolean } = {}): string {
   const key = `${currency}:${opts.compact ? 1 : 0}`;
   let fmt = formatters.get(key);
   if (!fmt) {
-    fmt = new Intl.NumberFormat("en-US", {
+    fmt = new Intl.NumberFormat(localeFor(currency), {
       style: "currency",
       currency,
       minimumFractionDigits: opts.compact ? 0 : 2,
@@ -47,4 +52,10 @@ export function formatMoney(cents: Cents, currency = "USD", opts: { compact?: bo
   }
   // Display only: an integer number of cents divided by 100 prints exactly at two decimals.
   return fmt.format(cents / 100);
+}
+
+/** The currency's symbol for an input prefix ("₹", "$"), or the code when it has none. */
+export function currencySymbol(currency: string): string {
+  const parts = new Intl.NumberFormat(localeFor(currency), { style: "currency", currency }).formatToParts(0);
+  return parts.find((part) => part.type === "currency")?.value ?? currency;
 }

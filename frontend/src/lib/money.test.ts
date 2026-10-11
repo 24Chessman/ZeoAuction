@@ -1,4 +1,4 @@
-import { formatMoney, parseMoney, parseMoneyInput, toMoneyString } from "./money";
+import { currencySymbol, formatMoney, parseMoney, parseMoneyInput, toMoneyString } from "./money";
 
 describe("money", () => {
   it("parses wire amounts into integer cents", () => {
@@ -40,6 +40,16 @@ describe("money", () => {
   it("formats for display in the API's currency", () => {
     expect(formatMoney(125_000, "USD")).toBe("$1,250.00");
     expect(formatMoney(125_000, "USD", { compact: true })).toBe("$1,250");
-    expect(formatMoney(5_000, "INR")).toContain("50.00");
+    expect(formatMoney(5_000, "INR")).toBe("₹50.00");
+  });
+
+  it("groups rupees in lakhs and defaults to INR (ADR-0009)", () => {
+    expect(formatMoney(12_500_000)).toBe("₹1,25,000.00");
+    expect(formatMoney(134_900, "INR", { compact: true })).toBe("₹1,349");
+  });
+
+  it("knows the input prefix of a currency", () => {
+    expect(currencySymbol("INR")).toBe("₹");
+    expect(currencySymbol("USD")).toBe("$");
   });
 });

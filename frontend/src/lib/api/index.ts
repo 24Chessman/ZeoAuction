@@ -3,8 +3,8 @@ import { ApiError } from "../errors";
 import { toMoneyString, type Cents } from "../money";
 import { request } from "./http";
 import type {
-  AdminSubmission, Auction, BidAccepted, BidPage, CreateAuction, DocumentUrl, FeeQuote,
-  KycFiles, KycSubmission, Profile, QueuePage, TokenPair,
+  AdminSubmission, Auction, BidAccepted, BidPage, CheckoutSession, CreateAuction, DocumentUrl, FeeQuote,
+  KycFiles, KycSubmission, LedgerEntry, Order, PaymentConfirmation, Profile, QueuePage, TokenPair,
 } from "./types";
 
 export * from "./types";
@@ -98,6 +98,34 @@ export const bidApi = {
 export const feeApi = {
   async quote(amount: Cents): Promise<FeeQuote> {
     return (await request<FeeQuote>("payment", "GET", `/api/v1/fees/quote?bid_amount=${toMoneyString(amount)}`)).data;
+  },
+};
+
+export const orderApi = {
+  /** The order of a closed auction, for its buyer, seller or an admin; null until it is invoiced. */
+  async forAuction(auctionId: string): Promise<Order | null> {
+    try {
+      return (await request<Order>("payment", "GET", `/api/v1/auctions/${auctionId}/order`, { auth: true })).data;
+    } catch (error) {
+      if (error instanceof ApiError && (error.code === "NOT_FOUND" || error.code === "FORBIDDEN")) return null;
+      throw error;
+    }
+  },
+  async get(orderId: string): Promise<Order> {
+    return (await request<Order>("payment", "GET", `/api/v1/orders/${orderId}`, { auth: true })).data;
+  },
+  /** The winner opens Checkout; repeating it returns the same provider order. */
+  async checkout(orderId: string): Promise<CheckoutSession> {
+    return (await request<CheckoutSession>("payment", "POST", `/api/v1/orders/${orderId}/checkout`, { auth: true })).data;
+  },
+  /** Checkout's signed result; the payment is captured into (simulated) escrow. */
+  async confirm(orderId: string, payment: PaymentConfirmation, idempotencyKey: string): Promise<Order> {
+    return (await request<Order>("payment", "POST", `/api/v1/orders/${orderId}/payment`, {
+      auth: true, json: payment, headers: { "Idempotency-Key": idempotencyKey },
+    })).data;
+  },  /** The order's append-only escrow ledger (admins). */
+  async ledger(orderId: string): Promise<LedgerEntry[]> {
+    return (await request<LedgerEntry[]>("payment", "GET", `/api/v1/orders/${orderId}/ledger`, { auth: true })).data;
   },
 };
 

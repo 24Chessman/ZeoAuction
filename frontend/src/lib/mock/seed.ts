@@ -1,4 +1,4 @@
-import type { Auction, DocType, KycStatus, Role } from "../api/types";
+import type { Auction, DocType, KycStatus, LedgerEntry, Order, Role } from "../api/types";
 import { toMoneyString } from "../money";
 import { policy } from "../policy";
 
@@ -51,8 +51,16 @@ export interface MockSubmission {
   documents: MockDocument[];
 }
 
+/** An order plus the provider order its Checkout pays (mock adapter, ADR-0009). */
+export interface MockOrder extends Order {
+  provider_order_id: string | null;
+  /** Escrow ledger rows, appended when the payment is captured. */
+  ledger?: LedgerEntry[];
+}
+
 export interface MockState {
-  version: 1;
+  version: 2;
+  orders: MockOrder[];
   users: MockUser[];
   auctions: Auction[];
   bids: MockBid[];
@@ -90,6 +98,8 @@ interface CatalogueItem {
   closesIn: number | null;
   state: Auction["state"];
   bids?: number[];
+  /** Who placed the last bid; by default the bidders rotate buyer2, bot1, bot2, bot3. */
+  winner?: string;
 }
 
 const MIN = 60_000;
@@ -99,48 +109,55 @@ const catalogue: CatalogueItem[] = [
     id: "00000000-0000-4000-8000-000000000201",
     title: "Vintage film camera",
     description: "Working 35mm rangefinder, synthetic demo listing. Shutter speeds tested, light seals replaced, original leather case included.",
-    category: "cameras", start: 10_000, reserve: 15_000, opensIn: -60, closesIn: 2 * 24 * 60, state: "OPEN",
-    bids: [10_000, 10_100, 10_500],
+    category: "cameras", start: 800_000, reserve: 1_200_000, opensIn: -60, closesIn: 2 * 24 * 60, state: "OPEN",
+    bids: [800_000, 810_000, 850_000],
   },
   {
     id: "00000000-0000-4000-8000-000000000202",
     title: "Mechanical keyboard",
     description: "Draft listing, not yet published.",
-    category: "electronics", start: 4_000, reserve: null, opensIn: null, closesIn: null, state: "DRAFT",
+    category: "electronics", start: 300_000, reserve: null, opensIn: null, closesIn: null, state: "DRAFT",
   },
   {
     id: "00000000-0000-4000-8000-000000000203",
     title: "Mid-century walnut lounge chair",
     description: "Synthetic demo listing. Solid walnut frame with re-upholstered wool cushions. Light patina on the arms, structurally sound.",
-    category: "furniture", start: 45_000, reserve: 60_000, opensIn: -120, closesIn: 9, state: "OPEN",
-    bids: [45_000, 46_000, 47_500, 48_000],
+    category: "furniture", start: 3_500_000, reserve: 4_500_000, opensIn: -120, closesIn: 9, state: "OPEN",
+    bids: [3_500_000, 3_600_000, 3_700_000, 3_800_000],
   },
   {
     id: "00000000-0000-4000-8000-000000000204",
     title: "Automatic dive watch, 200 m",
     description: "Synthetic demo listing. Stainless case, unidirectional bezel, serviced last year. Box and papers.",
-    category: "watches", start: 120_000, reserve: null, opensIn: -300, closesIn: 95, state: "OPEN",
-    bids: [120_000, 121_000, 123_500],
+    category: "watches", start: 9_500_000, reserve: null, opensIn: -300, closesIn: 95, state: "OPEN",
+    bids: [9_500_000, 9_600_000, 9_800_000],
   },
   {
     id: "00000000-0000-4000-8000-000000000205",
     title: "First-edition science fiction novel",
     description: "Synthetic demo listing. Hardcover with dust jacket, minor shelf wear. Protected in a mylar sleeve.",
-    category: "books", start: 8_000, reserve: 9_000, opensIn: -30, closesIn: 26 * 60, state: "OPEN",
-    bids: [8_000],
+    category: "books", start: 600_000, reserve: 700_000, opensIn: -30, closesIn: 26 * 60, state: "OPEN",
+    bids: [600_000],
   },
   {
     id: "00000000-0000-4000-8000-000000000206",
     title: "Analog synthesizer, 37 keys",
     description: "Synthetic demo listing. Fully analog signal path, all keys and knobs verified. Ships in original box.",
-    category: "music", start: 60_000, reserve: 70_000, opensIn: 45, closesIn: 3 * 24 * 60, state: "SCHEDULED",
+    category: "music", start: 4_800_000, reserve: 5_500_000, opensIn: 45, closesIn: 3 * 24 * 60, state: "SCHEDULED",
   },
   {
     id: "00000000-0000-4000-8000-000000000207",
     title: "Hand-thrown stoneware tea set",
     description: "Synthetic demo listing. Teapot and four cups, ash glaze. Each piece signed on the base.",
-    category: "art", start: 6_500, reserve: null, opensIn: -3 * 24 * 60, closesIn: -60, state: "CLOSED",
-    bids: [6_500, 7_000, 7_500, 8_000, 9_000],
+    category: "art", start: 500_000, reserve: null, opensIn: -3 * 24 * 60, closesIn: -60, state: "CLOSED",
+    bids: [500_000, 550_000, 600_000, 650_000, 700_000],
+  },
+  {
+    id: "00000000-0000-4000-8000-000000000208",
+    title: "Sterling silver pendant necklace",
+    description: "Synthetic demo listing. Handmade 925 silver pendant on an 18-inch chain, hallmarked. Comes in a gift pouch.",
+    category: "jewelry", start: 250_000, reserve: null, opensIn: -2 * 24 * 60, closesIn: -30, state: "CLOSED",
+    bids: [250_000, 260_000, 280_000, 300_000], winner: ids.buyer1,
   },
 ];
 
@@ -169,7 +186,7 @@ export function seedState(now = Date.now()): MockState {
       const bid: MockBid = {
         bid_id: crypto.randomUUID(),
         auction_id: item.id,
-        bidder_id: bidders[index % bidders.length],
+        bidder_id: item.winner && index === item.bids!.length - 1 ? item.winner : bidders[index % bidders.length],
         amount,
         server_seq: seq,
         accepted_at: iso((opens ?? now) + (index + 1) * 7 * MIN),
@@ -215,5 +232,5 @@ export function seedState(now = Date.now()): MockState {
     },
   ];
 
-  return { version: 1, users, auctions, bids, submissions, refresh: {}, idempotency: {} };
+  return { version: 2, users, auctions, bids, orders: [], submissions, refresh: {}, idempotency: {} };
 }

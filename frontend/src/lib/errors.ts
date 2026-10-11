@@ -1,8 +1,8 @@
 import type { ErrorEnvelope } from "./api/types";
 
 /**
- * Every failure the UI shows is one of the codes in contracts/errors/ (bid taxonomy v1.0.0 +
- * common codes). The copy below explains the code to a person; the code itself is the server's.
+ * Every failure the UI shows is one of the codes in contracts/errors/ (bid taxonomy v1.0.0,
+ * payment codes and common codes). The copy below explains the code to a person; the code itself is the server's.
  */
 export class ApiError extends Error {
   readonly code: string;
@@ -25,7 +25,7 @@ export class ApiError extends Error {
 }
 
 /** contracts/errors/bid-rejection-codes.yaml `retryable: true`, plus the common 503. */
-const RETRYABLE = new Set(["AUCTION_STATE_UNAVAILABLE", "SERVICE_UNAVAILABLE", "NETWORK_ERROR"]);
+const RETRYABLE = new Set(["AUCTION_STATE_UNAVAILABLE", "SERVICE_UNAVAILABLE", "PAYMENT_PROVIDER_UNAVAILABLE", "NETWORK_ERROR"]);
 
 interface Copy {
   title: string;
@@ -63,6 +63,12 @@ export const ERROR_COPY: Record<string, Copy> = {
   EMAIL_ALREADY_REGISTERED: { title: "An account with this email already exists" },
   REFRESH_TOKEN_INVALID: { title: "Your session ended", hint: "Log in again to continue." },
   KYC_ALREADY_ACTIVE: { title: "You already have a verification in progress" },
+  // Payment codes (contracts/errors/payment-error-codes.yaml)
+  ORDER_NOT_PAYABLE: { title: "This order has nothing left to pay" },
+  PAYMENT_SIGNATURE_INVALID: { title: "The payment could not be verified", hint: "Nothing was captured. Try paying again." },
+  PAYMENT_PROVIDER_UNAVAILABLE: { title: "The payment provider is unavailable", hint: "Nothing was charged. Try again shortly." },
+  PAYMENT_PROVIDER_ERROR: { title: "The payment provider refused the request", hint: "Test mode: check the Razorpay test keys." },
+  SETTLEMENT_CONFLICT: { title: "This auction is already being settled" },
   // Client-side, never from the server
   NETWORK_ERROR: { title: "Can't reach the server", hint: "Check your connection and try again." },
 };

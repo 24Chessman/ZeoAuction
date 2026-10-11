@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { ArrowRight, BadgeCheck, CalendarDays, Mail, ShieldCheck, UserRound } from "lucide-react";
 import { useAuth } from "@/app/auth";
+import { OrdersCard } from "@/components/auction/OrdersCard";
 import { Banner, Button, ButtonLink, Card, CardBody, CardHeader, Field, Input, KycBadge, PageHeader, useToast } from "@/components/ui";
 import { describeError } from "@/lib/errors";
 import { formatDate, initials } from "@/lib/format";
@@ -49,6 +50,8 @@ export function AccountPage() {
         </Card>
 
         <div className="space-y-6">
+          <OrdersCard userId={user.user_id} />
+
           <Card>
             <CardHeader title="Profile" description="Your display name is shown on your account. In auctions you always appear under a per-auction nickname." />
             <CardBody>
