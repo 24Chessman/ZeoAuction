@@ -1,0 +1,35 @@
+# Render blueprint (owner: Ayush). The deployment artefact of record (SDD 3.1.1, FR-INFRA-4).
+#
+# Plan 1 declares only the Kafka broker, which must be provisioned and smoke-tested now rather
+# than at deployment time (#89, proposal risk table). Every other service, the managed
+# PostgreSQL and Key Value instances, environment groups and the escrow-sweep cron are added
+# in Plan 6 (#97) and Plan 7 (#98).
+#
+# First-time setup:
+#   1. Render dashboard -> New -> Blueprint -> select this repository.
+#   2. After the first deploy, copy the service's internal hostname (Connect -> Internal)
+#      into the KAFKA_ADVERTISED_HOST environment variable and redeploy.
+#   3. Shell tab: /opt/zeo/create-topics.sh localhost:9092
+#   4. Shell tab: /opt/zeo/smoke-test.sh produce localhost:9092 ; restart the service ;
+#      /opt/zeo/smoke-test.sh verify localhost:9092  -> must print PASS.
+#      (Set SMOKE_MARKER_FILE=/var/lib/kafka/data/.smoke-marker so the marker survives too.)
+
+services:
+  - type: pserv
+    name: zeo-kafka
+    runtime: docker
+    dockerfilePath: ./infra/kafka/Dockerfile
+    dockerContext: ./infra/kafka
+    # Persistent disks require a paid instance type.
+    plan: starter
+    region: singapore
+    numInstances: 1
+    disk:
+      name: kafka-data
+      mountPath: /var/lib/kafka/data
+      sizeGB: 10
+    envVars:
+      - key: KAFKA_ADVERTISED_HOST
+        sync: false
+      - key: SMOKE_MARKER_FILE
+        value: /var/lib/kafka/data/.smoke-marker
