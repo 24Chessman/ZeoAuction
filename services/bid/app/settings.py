@@ -14,7 +14,7 @@ class Settings:
     kafka_bootstrap_servers: str
     auction_service_url: str
     pricing_service_url: str
-    # "stub" until the Pricing Engine serves CT-3 (Plan 4); "http" calls it.
+    # "http" calls the Pricing Engine (CT-3, Compose and Render); "stub" uses the tier table.
     pricing_mode: str
     # "kafka" in Compose and on Render; "memory" for local runs without a broker.
     publisher: str

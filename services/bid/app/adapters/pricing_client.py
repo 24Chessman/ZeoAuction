@@ -1,10 +1,17 @@
 """CT-3 consumer: the minimum bid increment from the Pricing Engine.
 
-Contract: contracts/openapi/internal/pricing.v1.yaml. Until the Pricing Engine serves CT-3
-(Plan 4), :class:`StubPricingClient` answers with the same shape from a fixed tier table.
-:class:`HttpPricingClient` calls the real provider; while its breaker is open it falls back to
-the last increment cached in Redis (``inc:{auction_id}``) and flags the bid
+Contract: contracts/openapi/internal/pricing.v1.yaml. :class:`HttpPricingClient` calls the
+Pricing Engine (``PRICING_MODE=http``); :class:`StubPricingClient` answers with the same shape
+from the fixed tier table, for runs without the engine. While the CT-3 breaker is open (5
+failures in 10 s) the HTTP client falls back to the last increment cached in Redis
+(``inc:{auction_id}``, 60 s, written by both the engine and this client) and flags the bid
 ``increment_stale``.
+
+The tier table is the floor of every increment: the Pricing Engine's dynamic increment never
+goes below it, and the fallback never does either (a cached increment from a lower price band
+is raised to the tier). :func:`app.domain.conflict.replay` re-derives the winner with this
+table, so a live bid can never clear a lower bar than the replay applies (AC-04). The table is
+pinned to ``infra/postgres/init/51-pricing-dynamic.sql`` by ``tests/test_ct3_breaker.py``.
 """
 
 import logging
@@ -57,6 +64,10 @@ class StubPricingClient:
         return IncrementQuote(min_increment=increment, min_next_bid=current_price + increment)
 
 
+# inc:{auction_id} lifetime, SDD Table 4.3.
+INCREMENT_CACHE_TTL_SECONDS = 60
+
+
 def increment_cache_key(auction_id: UUID) -> str:
     return f"inc:{auction_id}"
 
@@ -85,11 +96,13 @@ class HttpPricingClient:
             quote = await self.breaker.call(lambda: self._fetch(auction_id, current_price))
         except (CircuitOpen, httpx.HTTPError, KeyError, ValueError) as exc:
             cached = await self.redis.get(increment_cache_key(auction_id))
-            increment = parse_money(cached) if cached else tier_increment(current_price)
+            floor = tier_increment(current_price)
+            increment = max(parse_money(cached), floor) if cached else floor
             logger.warning("CT-3 unavailable (%s); using %s increment", exc,
                            "cached" if cached else "tier-table")
             return IncrementQuote(
                 min_increment=increment, min_next_bid=current_price + increment, stale=True
             )
-        await self.redis.set(increment_cache_key(auction_id), format_money(quote.min_increment))
+        await self.redis.set(increment_cache_key(auction_id), format_money(quote.min_increment),
+                             ex=INCREMENT_CACHE_TTL_SECONDS)
         return quote
