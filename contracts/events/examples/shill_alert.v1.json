@@ -1,0 +1,19 @@
+{
+  "alert_id": "f7a1b2c3-d4e5-4f60-8a7b-8c9d0e1f2a3b",
+  "schema_version": 1,
+  "auction_id": "00000000-0000-4000-8000-000000000201",
+  "ring_id": null,
+  "score": 0.87,
+  "signals": {
+    "bidVelocity": 14.5,
+    "selfBidRatio": 0.0,
+    "interArrivalStdDev": 0.8,
+    "fingerprintOverlap": 0.66,
+    "accountAgeDays": 2,
+    "winRateWithSeller": 0.0,
+    "graphDegreeToSeller": 3
+  },
+  "suspect_bidder_ids": ["00000000-0000-4000-8000-000000000005"],
+  "raised_at": "2026-08-22T09:40:00Z",
+  "auction_closes_at": "2026-08-22T10:00:00Z"
+}

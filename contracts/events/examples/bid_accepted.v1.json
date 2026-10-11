@@ -1,0 +1,16 @@
+{
+  "event_id": "7c1e4f3a-6b2d-4c8e-9a1f-0d2b3c4e5f60",
+  "schema_version": 1,
+  "auction_id": "00000000-0000-4000-8000-000000000201",
+  "bid_id": "b1d00000-0000-4000-8000-000000000001",
+  "bidder_id": "00000000-0000-4000-8000-000000000004",
+  "seller_id": "00000000-0000-4000-8000-000000000002",
+  "amount": "1250.00",
+  "currency": "USD",
+  "server_seq": 42,
+  "accepted_at": "2026-08-20T10:15:30.120Z",
+  "auction_closes_at": "2026-08-22T10:00:00Z",
+  "idempotency_key": "c0ffee00-bid-0001",
+  "device_fingerprint": "fp_9a8b7c6d",
+  "increment_stale": false
+}

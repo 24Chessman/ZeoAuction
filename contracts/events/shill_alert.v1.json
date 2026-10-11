@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://zeoauction.local/contracts/events/shill_alert.v1.json",
+  "title": "ShillAlert v1",
+  "description": "Published to fraud.alerts (key: auction_id) when the detector scores a shill-bidding pattern (SDD Listing 7.8). raised_at must precede the auction close (FR-FRAUD-4, AC-14); a late alert counts as a miss. Owner: Harshal.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["alert_id", "schema_version", "auction_id", "score", "signals", "raised_at", "auction_closes_at"],
+  "properties": {
+    "alert_id": { "type": "string", "format": "uuid" },
+    "schema_version": { "const": 1 },
+    "auction_id": { "type": "string", "format": "uuid", "description": "Partition key." },
+    "ring_id": { "type": ["string", "null"], "format": "uuid" },
+    "score": { "type": "number", "minimum": 0, "maximum": 1 },
+    "signals": {
+      "type": "object",
+      "description": "Feature values that drove the score (SDD Table 5.3).",
+      "properties": {
+        "bidVelocity": { "type": "number" },
+        "selfBidRatio": { "type": "number" },
+        "interArrivalStdDev": { "type": "number" },
+        "fingerprintOverlap": { "type": "number" },
+        "accountAgeDays": { "type": "number" },
+        "winRateWithSeller": { "type": "number" },
+        "graphDegreeToSeller": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "suspect_bidder_ids": {
+      "type": "array",
+      "items": { "type": "string", "format": "uuid" }
+    },
+    "raised_at": { "type": "string", "format": "date-time" },
+    "auction_closes_at": { "type": "string", "format": "date-time" }
+  }
+}

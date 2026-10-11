@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://zeoauction.local/contracts/events/bid_accepted.v1.json",
+  "title": "BidAccepted v1",
+  "description": "Published to bid.events (key: auction_id) for every accepted bid, before the client is acknowledged. Authored once and consumed identically by the bid pipeline and the fraud detector (FR-BID-7, FR-FRAUD-1). Owners: Harshal (#50) with Sumit (producer, #29).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["event_id", "schema_version", "auction_id", "bidder_id", "amount", "server_seq", "accepted_at", "idempotency_key"],
+  "properties": {
+    "event_id": { "type": "string", "format": "uuid" },
+    "schema_version": { "const": 1 },
+    "auction_id": { "type": "string", "format": "uuid", "description": "Partition key." },
+    "bid_id": { "type": "string", "format": "uuid" },
+    "bidder_id": { "type": "string", "format": "uuid" },
+    "seller_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Carried so the fraud detector can compute seller-linked signals without a lookup."
+    },
+    "amount": { "type": "string", "pattern": "^(0|[1-9]\\d{0,9})\\.\\d{2}$" },
+    "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+    "server_seq": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Authoritative per-auction order. Consumers order by this, never by accepted_at."
+    },
+    "accepted_at": { "type": "string", "format": "date-time" },
+    "auction_closes_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Close time at acceptance; alerts must be raised before it (AC-14)."
+    },
+    "idempotency_key": { "type": "string", "minLength": 8, "maxLength": 80 },
+    "device_fingerprint": { "type": ["string", "null"], "maxLength": 256 },
+    "increment_stale": {
+      "type": "boolean",
+      "default": false,
+      "description": "True when the pricing circuit breaker was open and a cached increment was used."
+    }
+  }
+}
