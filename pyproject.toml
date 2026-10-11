@@ -1,0 +1,35 @@
+# Repository-wide tooling configuration. Each service has its own pyproject.toml
+# for pytest settings only; ruff picks up this file for every Python path.
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = ["project_docs", "planing", "commits"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "ASYNC"]
+ignore = []
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S101", "S105", "S106", "S311"]  # asserts, test secrets, seeded PRNGs
+# Seeded PRNG for a reproducible synthetic dataset, not for anything secret.
+"services/fraud-detector/dataset/**" = ["S311"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["zeo_common", "app", "tests", "dataset"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/contracts"]
+
+# Coverage settings for every suite. CI runs each service with
+# `pytest --cov=app --cov-config=../../pyproject.toml --cov-fail-under=80`.
+[tool.coverage.run]
+branch = false
+
+[tool.coverage.report]
+exclude_also = [
+    'if __name__ == "__main__":',
+    "pragma: no cover",
+    "raise NotImplementedError",
+    '\.\.\.$',
+]
