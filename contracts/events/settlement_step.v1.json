@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://zeoauction.local/contracts/events/settlement_step.v1.json",
+  "title": "SettlementStep v1",
+  "description": "Published to payment.events (key: order_id) for each settlement saga step (SDD Listing 7.8). Owner: Jaydip.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["event_id", "schema_version", "order_id", "auction_id", "type", "saga_id", "idempotency_key", "occurred_at"],
+  "properties": {
+    "event_id": { "type": "string", "format": "uuid" },
+    "schema_version": { "const": 1 },
+    "order_id": { "type": "string", "format": "uuid", "description": "Partition key." },
+    "auction_id": { "type": "string", "format": "uuid" },
+    "type": {
+      "enum": ["INVOICED", "CAPTURED", "HELD", "SHIPPED", "DISPUTED", "RELEASED", "REFUNDED", "COMPENSATED"]
+    },
+    "gross": { "$ref": "#/$defs/money", "description": "Captured total (winning bid + fee)." },
+    "fee": { "$ref": "#/$defs/money" },
+    "net": { "$ref": "#/$defs/money", "description": "Seller payout (gross - fee) or refund amount." },
+    "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+    "fee_version": { "type": "string" },
+    "saga_id": { "type": "string", "format": "uuid" },
+    "idempotency_key": { "type": "string" },
+    "occurred_at": { "type": "string", "format": "date-time" }
+  },
+  "$defs": {
+    "money": { "type": "string", "pattern": "^(0|[1-9]\\d{0,9})\\.\\d{2}$" }
+  }
+}
