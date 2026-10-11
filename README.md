@@ -1,91 +1,77 @@
 # ZeoAuction
 
-**Distributed Real-Time Auction Platform** — a microservices-based auction system built on Service-Oriented Architecture (SOA) principles, developed as a Web Services & SOA group project (M.Sc. IT, Semester 3).
+A distributed real-time auction platform: microservices / SOA, built by an M.Sc. IT (Semester 3) group project team of 8.
 
-Users create, bid on, and settle auctions across independently deployable services communicating through **Apache Kafka** (event-driven, asynchronous) and **REST APIs** (synchronous, request–response). Sellers must complete KYC verification before listing; the platform charges a flat convenience fee per sale; and settlement funds are held in **escrow** during a bounded buyer-protection window before release.
+Sellers must pass KYC before they can list. Bids are sequenced deterministically under contention. Watchers see prices live
+over WebSocket. Settlement charges a flat convenience fee and holds the funds in a **simulated** escrow for a buyer-protection
+window, and a streaming detector flags shill bidding before the auction closes.
 
-## Key Capabilities
+> **The escrow flow is a functional simulation.** Payment runs in test mode only, and no real money is ever handled.
 
-- **High-throughput bidding** — authoritative server-side sequencing for deterministic conflict resolution on concurrent bids, with Redis-backed write buffering and batched persistence
-- **Real-time updates** — WebSocket push (no polling) for live price changes and outbid alerts
-- **In-flight fraud detection** — a streaming detector consumes the same Kafka topic as the bid pipeline to catch shill-bidding patterns before auction close, not in overnight batch jobs
-- **Escrow-based settlement** — platform-held funds, released only on buyer confirmation, window expiry, or admin dispute adjudication
-- **KYC-gated listing** — sellers must be verified before the listing endpoint accepts a request
-- **Fault isolation** — circuit breakers, per-service health checks, and automatic restart so one failing subsystem doesn't take the platform down
-- **Independent scaling** — each service scales horizontally on its own
+## Where things are
 
-## Architecture
-
-Hybrid web application:
-- **Frontend:** React 18 + Tailwind CSS (SPA), deployed to Vercel
-- **Backend:** Python 3.11 + FastAPI microservices, containerized with Docker, deployed independently on Render
-- **Messaging:** Apache Kafka (ordered, replayable event log feeding both bidding and fraud detection)
-- **Database:** PostgreSQL 15 (ACID guarantees for money, escrow ledger, bid history)
-- **Cache/Buffer:** Redis 7 (current-price reads, write buffering)
-- **Real-time:** Native FastAPI WebSockets
-- **Auth:** JWT (access + refresh), verification status carried as a claim
-- **Document storage:** S3-compatible object storage, encrypted at rest, signed-URL access only
-- **Payments:** Stripe (test mode) — functional simulation, no real funds handled
-- **Observability:** Prometheus, Grafana, Jaeger
-- **CI/CD:** GitHub Actions → Render (backend) / Vercel (frontend)
-
-## Core Services / Components
-
-| Component | Description |
+| Path | What |
 |---|---|
-| Auth & User Service | Registration, JWT issuance, roles, profiles, sessions |
-| KYC & Seller Verification | Document submission, encrypted store, verification state machine, listing gate |
-| Bid Processing | Validation, deterministic conflict resolution, idempotency keys, Redis buffering |
-| Auction Orchestration | Lifecycle state machine, anti-snipe auto-extension, settlement transitions |
-| Pricing Engine | Bid-velocity tracking, dynamic increment calculation, hot-auction flagging |
-| Payment, Fees & Escrow | Stripe integration, convenience-fee engine, escrow hold/release, Saga compensation |
-| Dispute Management | Dispute lifecycle, evidence capture, window enforcement, auto-release scheduler, adjudication |
-| Fraud Detection | Shill-bid detection, device fingerprinting, bid-ring clustering on live event stream |
-| WebSocket Gateway | Connection management, room fan-out, outbid alerts, reconnect handling |
-| Admin & Moderation | Listing review, user suspension, audit log |
-| Search & Analytics | Full-text search, filtering, seller dashboard, trend reporting |
-| Frontend | Bidding UI, fee disclosure, KYC upload, dispute form, notifications |
+| `project_docs/` | Proposal, System Design Document (SDD), Jira timeline |
+| `planing/` | The 8 implementation plans (two-week windows) |
+| `commits/` | Who commits what, per plan |
+| `services/` | 13 deployable services (10 APIs, 2 workers, 1 cron) |
+| `libs/zeo-common/` | The service template every service is created from |
+| `contracts/` | Frozen API and event contracts that services code against |
+| `infra/` | PostgreSQL schemas, Kafka and S3 storage setup, Render Kafka image |
+| `config/settlement-policy.yaml` | Fee, protection window, anti-snipe numbers |
+| `docs/` | Architecture, state machines, ADRs, conventions |
 
-## Settlement Policy (summary)
+## Run it locally
 
-- **Convenience fee:** flat amount per completed sale (not a percentage), disclosed pre-bid, added at invoicing, non-refundable on buyer-fault disputes
-- **Escrow hold:** captured total held by the platform until an explicit release transition — no code path pays a seller directly on capture
-- **Protection window:** configurable (default 7 days) from ship date; disputes only accepted while open
-- **Release triggers:** buyer confirmation, window expiry (auto-release), or dispute resolved in seller's favor
-- **Refund trigger:** dispute resolved in buyer's favor, reversing the Stripe capture
-- Full rules are documented in Section 5 of the project proposal and enforced by a time-accelerated test fixture covering every terminal state.
-
-## Success Metrics (targets)
-
-- **Throughput:** 1000 bids/sec aggregate across 50 concurrent auctions (≤0.1% error rate); 200 bids/sec against a single contended auction
-- **Latency:** p95 bid acknowledgement < 500 ms; p95 WebSocket fan-out < 100 ms at 500 concurrent watchers
-- **Settlement correctness:** 100% reconciliation across 1000 simulated settlements (zero tolerance)
-- **KYC enforcement:** zero auctions created by unverified accounts
-- **Fraud detection:** recall ≥ 0.90 at precision ≥ 0.75 on a seeded 500-auction dataset, alerts raised pre-close
-- **Resilience:** any single backend service can be stopped without taking down the rest of the platform
-- **Code quality:** 80% unit-test coverage, zero linting errors in CI, two approvals per PR
-
-## Getting Started
-
-> Setup instructions (Docker Compose, environment variables, service ports) will be added here as the infrastructure lands in Weeks 1–2.
+Prerequisites: Docker Desktop (about 6 GB of RAM for the full stack), plus Python 3.11+ for the tests.
 
 ```bash
-# Clone the repo
-git clone https://github.com/<org>/zeoauction.git
-cd zeoauction
-
-# Bring up the full stack locally
-docker compose up --build
+docker compose up -d --build     # or: make up
+docker compose ps                # every service should be "healthy"
+make seed                        # development users and auctions
+make verify-db                   # proves the schema guarantees (append-only ledger, ownership...)
 ```
 
-## Tech Stack
+| URL | What |
+|---|---|
+| http://localhost:8001 … 8012 `/healthz` | Services (see `docs/architecture.md` for the port map) |
+| http://localhost:8004/api/v1/docs | API docs of a service (here: bid) |
+| `localhost:8333` | S3 API (SeaweedFS; key `zeo-dev-access` / `zeo-dev-secret`) |
+| `localhost:5432` | PostgreSQL (`postgres` / `postgres`, database `zeoauction`) |
+| `localhost:29092` | Kafka from the host |
 
-`Python 3.11` · `FastAPI` · `React 18` · `Tailwind CSS` · `Apache Kafka` · `PostgreSQL 15` · `Redis 7` · `Docker` · `Docker Compose` · `Render` · `Vercel` · `Stripe` · `Prometheus` · `Grafana` · `Jaeger` · `GitHub Actions`
+Schema changes only apply to a fresh database: `make reset && make up`.
+
+**Windows notes:**
+- `make` isn't installed by default, so run the command listed under each target in the `Makefile`.
+- In Git Bash, prefix `docker compose exec` commands that pass container paths with `MSYS_NO_PATHCONV=1`.
+  Otherwise Git Bash rewrites `/opt/...` into a Windows path.
+- If the first `docker compose up --build` crashes Docker Desktop (13 images building in parallel), build them
+  one at a time: `for s in $(docker compose config --services); do docker compose build $s; done`.
+
+## Tests
+
+```bash
+python -m venv .venv && . .venv/bin/activate      # Windows: .venv\Scripts\activate
+pip install ./libs/zeo-common -r requirements-dev.txt
+ruff check .
+sh scripts/test-all.sh           # shared library, contracts, every service
+```
+
+CI (`.github/workflows/ci.yml`) runs the same checks on every pull request.
 
 ## Team
 
-Eight-member team, each allocated 200 hours (1600 total) against named component ownership. See the project proposal (`docs/ZeoAuctionProposal.pdf`) for the full role breakdown, timeline, and risk register.
+| Member | Owns |
+|---|---|
+| Naitik | Bid Processing, Integration Testing |
+| Sumit | Auction Orchestration, Documentation, Milestones |
+| Sagar | KYC & Seller Verification, Pricing Engine, Search |
+| Harshal | Fraud Detection |
+| Jaydip | Payment, Fees & Escrow |
+| Gaurang | Frontend |
+| Jay | Dispute Management, Admin & Moderation |
+| Ayush | Auth, WebSocket Gateway, Infrastructure |
 
-## License
-
-TBD — academic project (M.Sc. IT, Semester 3, Web Services & SOA).
+See `docs/engineering-conventions.md` before opening your first PR.

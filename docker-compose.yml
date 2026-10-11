@@ -1,0 +1,275 @@
+# ZeoAuction local stack (owner: Ayush, #88).
+# One file reproduces the whole system locally and in CI (NFR-MAINT-4):
+#   docker compose up -d --build     (or: make up)
+#
+# Host ports: services 8001-8012 (http://localhost:<port>/healthz), PostgreSQL 5432,
+# Redis 6379, Kafka 29092, S3 API 8333.
+
+name: zeoauction
+
+x-service-build: &service-build
+  context: .
+
+x-service-common: &service-common
+  restart: unless-stopped
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+    kafka-init:
+      condition: service_completed_successfully
+    s3-init:
+      condition: service_completed_successfully
+
+x-service-env: &service-env
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  REDIS_URL: redis://redis:6379/0
+  KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+  S3_ENDPOINT_URL: http://s3:8333
+  S3_ACCESS_KEY: zeo-dev-access
+  S3_SECRET_KEY: zeo-dev-secret
+  PAYMENT_ADAPTER: ${PAYMENT_ADAPTER:-mock}
+  # Shared access-token secret (LOCAL DEVELOPMENT ONLY; Render sets its own).
+  JWT_SECRET: ${JWT_SECRET:-zeo-dev-jwt-secret-not-for-production-use}
+  CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-http://localhost:5173}
+
+services:
+  # ---------------------------------------------------------------- data and messaging
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: zeoauction
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    ports: ["5432:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+      - ./infra/postgres/seed:/seed:ro
+      - ./infra/postgres/verify-guards.sql:/verify/verify-guards.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d zeoauction"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  kafka:
+    image: apache/kafka:3.8.1
+    restart: unless-stopped
+    ports: ["29092:29092"]
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,PLAINTEXT_HOST://:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+    volumes:
+      - kafkadata:/var/lib/kafka/data
+      - ./infra/kafka:/opt/zeo:ro
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 15s
+
+  kafka-init:
+    image: apache/kafka:3.8.1
+    depends_on:
+      kafka:
+        condition: service_healthy
+    volumes:
+      - ./infra/kafka:/opt/zeo:ro
+    entrypoint: ["sh", "/opt/zeo/create-topics.sh", "kafka:9092"]
+    restart: "no"
+
+  # S3-compatible object storage. SeaweedFS replaces MinIO, whose images are no longer
+  # published. Private buckets, SSE-S3 encryption at rest, signed-URL access only.
+  s3:
+    image: chrislusf/seaweedfs:4.48
+    restart: unless-stopped
+    command: server -dir=/data -s3 -s3.config=/etc/seaweedfs/s3-identities.json
+    ports: ["8333:8333"]
+    volumes:
+      - s3data:/data
+      - ./infra/s3/s3-identities.json:/etc/seaweedfs/s3-identities.json:ro
+      - ./infra/s3/security.toml:/etc/seaweedfs/security.toml:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -o /dev/null http://localhost:8333/"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  s3-init:
+    image: amazon/aws-cli:2.27.0
+    depends_on:
+      s3:
+        condition: service_healthy
+    environment:
+      AWS_ACCESS_KEY_ID: zeo-dev-access
+      AWS_SECRET_ACCESS_KEY: zeo-dev-secret
+      AWS_DEFAULT_REGION: us-east-1
+      S3_ENDPOINT_URL: http://s3:8333
+    volumes:
+      - ./infra/s3:/opt/zeo:ro
+    entrypoint: ["sh", "/opt/zeo/create-buckets.sh"]
+    restart: "no"
+
+  # ---------------------------------------------------------------- application services
+  auth-user:
+    <<: *service-common
+    build: { <<: *service-build, dockerfile: services/auth-user/Dockerfile }
+    ports: ["8001:8000"]
+    environment:
+      <<: *service-env
+      DATABASE_URL: postgresql://auth_svc:auth_dev_pw@postgres:5432/zeoauction
+      # Seeded accounts log in with "zeo-dev-password" (infra/postgres/seed/dev-seed.sql).
+      AUTH_ACCEPT_SEED_PASSWORD: "true"
+
+  kyc:
+    <<: *service-common
+    build: { <<: *service-build, dockerfile: services/kyc/Dockerfile }
+    ports: ["8002:8000"]
+    environment:
+      <<: *service-env
+      DATABASE_URL: postgresql://kyc_svc:kyc_dev_pw@postgres:5432/zeoauction
+      S3_BUCKET: kyc-documents
+      # Signed URLs are opened by the browser, so they point at the host-mapped port.
+      S3_PUBLIC_ENDPOINT_URL: http://localhost:8333
+      KYC_SIGNED_URL_TTL_SECONDS: "60"
+
+  auction-orchestrator:
+    <<: *service-common
+    build: { <<: *service-build, dockerfile: services/auction-orchestrator/Dockerfile }
+    ports: ["8003:8000"]
+    environment:
+      <<: *service-env
+      DATABASE_URL: postgresql://auction_svc:auction_dev_pw@postgres:5432/zeoauction
+      S3_BUCKET: listing-images
+      AUCTION_PUBLISHER: kafka          # AuctionStateChanged v1 on auction.events
+      CONSUME_BID_EVENTS: "true"        # anti-snipe (A4) and the drained winner (A6)
+      CHECK_TOKEN_FRESHNESS: "true"     # listing gate refuses tokens older than a KYC change
+      RUN_LIFECYCLE_TIMER: "true"       # A2 open, A5 close, A6 drained
+      DRAIN_GRACE_SECONDS: "5"
+
+  bid:
+    <<: *service-common
+    build: { <<: *service-build, dockerfile: services/bid/Dockerfile }
+    ports: ["8004:8000"]
+    environment:
+      <<: *service-env
+      DATABASE_URL: postgresql://bid_svc:bid_dev_pw@postgres:5432/zeoauction
+      AUCTION_SERVICE_URL: http://auction-orchestrator:8000
+      PRICING_SERVICE_URL: http://pricing:8000
+      PRICING_MODE: stub          # "http" once the Pricing Engine serves CT-3 (Plan 4)
+      BID_PUBLISHER: kafka
+      STUB_FUNDS_LIMIT: "100000.00"
+
+  pricing:
+    <<: *service-common
+    build: { <<: *service-build, dockerfile: services/pricing/Dockerfile }
+    ports: ["8005:8000"]
+    environment:
+      <<: *service-env
+      DATABASE_URL: postgresql://pricing_svc:pricing_dev_pw@postgres:5432/zeoauction
+
+  payment-escrow:
+    <<: *service-common
+    build: { <<: *service-build, dockerfile: services/payment-escrow/Dockerfile }
+    ports: ["8006:8000"]
+    environment:
+      <<: *service-env
+      DATABASE_URL: postgresql://payment_svc:payment_dev_pw@postgres:5432/zeoauction
+
+  dispute:
+    <<: *service-common
+    build: { <<: *service-build, dockerfile: services/dispute/Dockerfile }
+    ports: ["8007:8000"]
+    environment:
+      <<: *service-env
+      DATABASE_URL: postgresql://dispute_svc:dispute_dev_pw@postgres:5432/zeoauction
+      S3_BUCKET: dispute-evidence
+      PAYMENT_SERVICE_URL: http://payment-escrow:8000
+
+  search-analytics:
+    <<: *service-common
+    build: { <<: *service-build, dockerfile: services/search-analytics/Dockerfile }
+    ports: ["8008:8000"]
+    environment:
+      <<: *service-env
+      DATABASE_URL: postgresql://search_svc:search_dev_pw@postgres:5432/zeoauction
+
+  admin-moderation:
+    <<: *service-common
+    build: { <<: *service-build, dockerfile: services/admin-moderation/Dockerfile }
+    ports: ["8009:8000"]
+    environment:
+      <<: *service-env
+      DATABASE_URL: postgresql://admin_svc:admin_dev_pw@postgres:5432/zeoauction
+
+  ws-gateway:
+    <<: *service-common
+    build: { <<: *service-build, dockerfile: services/ws-gateway/Dockerfile }
+    ports: ["8010:8000"]
+    environment:
+      <<: *service-env
+      DATABASE_URL: postgresql://notify_svc:notify_dev_pw@postgres:5432/zeoauction
+      # One consumer group per instance: each gateway must see every event for its sockets.
+      WS_CONSUMER_GROUP: ws-gateway-local-1
+      WS_CONSUME_EVENTS: "true"
+
+  # ---------------------------------------------------------------- workers and cron
+  fraud-detector:
+    <<: *service-common
+    build: { <<: *service-build, dockerfile: services/fraud-detector/Dockerfile }
+    ports: ["8011:8000"]
+    environment:
+      <<: *service-env
+      DATABASE_URL: postgresql://fraud_svc:fraud_dev_pw@postgres:5432/zeoauction
+
+  bid-flusher:
+    <<: *service-common
+    build: { <<: *service-build, dockerfile: services/bid-flusher/Dockerfile }
+    ports: ["8012:8000"]
+    environment:
+      <<: *service-env
+      DATABASE_URL: postgresql://bid_svc:bid_dev_pw@postgres:5432/zeoauction
+      FLUSH_BATCH_MAX_SIZE: "500"
+      FLUSH_BATCH_MAX_AGE_MS: "500"
+      REPLAY_ON_START: "true"
+
+  # Render runs this as a Cron Job every minute (ADR-0006); locally a loop mirrors that.
+  escrow-sweep:
+    <<: *service-common
+    build: { <<: *service-build, dockerfile: services/escrow-sweep/Dockerfile }
+    entrypoint: ["sh", "-c", "while true; do python -m app.sweep; sleep 60; done"]
+    environment:
+      <<: *service-env
+      DATABASE_URL: postgresql://sweep_svc:sweep_dev_pw@postgres:5432/zeoauction
+      PAYMENT_SERVICE_URL: http://payment-escrow:8000
+
+volumes:
+  pgdata:
+  kafkadata:
+  s3data:

@@ -1,0 +1,6 @@
+# SeaweedFS security settings for the LOCAL stack only (owner: Ayush).
+# The key-encryption key enables SSE-S3, so buckets with default encryption store objects
+# encrypted at rest (NFR-SEC-2). This is a development key: it is committed on purpose and
+# protects nothing real. Hosted storage uses the provider's own encryption (Plan 3, #96).
+[s3.sse]
+kek = "7a656f61756374696f6e2d6c6f63616c2d6465762d6b656b2d33322d62797465"

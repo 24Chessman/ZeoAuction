@@ -1,0 +1,11 @@
+{
+  "identities": [
+    {
+      "name": "zeo-services",
+      "credentials": [
+        { "accessKey": "zeo-dev-access", "secretKey": "zeo-dev-secret" }
+      ],
+      "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+    }
+  ]
+}
