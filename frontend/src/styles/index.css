@@ -1,0 +1,112 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Design tokens: "Clear Glass". Space-separated RGB channels so Tailwind can apply alpha. */
+@layer base {
+  :root {
+    color-scheme: light;
+    --canvas: 247 247 251;
+    --surface: 255 255 255;
+    --surface-2: 242 242 248;
+    --surface-3: 233 233 242;
+    --ink: 14 14 24;
+    --ink-muted: 78 80 99;
+    --ink-faint: 106 108 128;
+    --line: 228 228 238;
+    --line-strong: 205 205 220;
+    --brand: 88 70 240;
+    --brand-strong: 70 52 214;
+    --brand-soft: 238 236 255;
+    --brand-ink: 72 54 216;
+    --on-brand: 255 255 255;
+    --positive: 4 120 87;
+    --positive-soft: 222 246 236;
+    --live: 180 83 9;
+    --live-soft: 254 243 214;
+    --danger: 200 30 30;
+    --danger-soft: 254 228 228;
+    --info: 29 98 202;
+    --info-soft: 224 236 255;
+    --shadow: 20 20 50;
+  }
+
+  .dark {
+    color-scheme: dark;
+    --canvas: 8 8 14;
+    --surface: 16 16 25;
+    --surface-2: 24 24 36;
+    --surface-3: 34 34 50;
+    --ink: 239 239 247;
+    --ink-muted: 168 170 190;
+    --ink-faint: 134 136 158;
+    --line: 36 36 54;
+    --line-strong: 56 56 80;
+    --brand: 140 128 255;
+    --brand-strong: 165 155 255;
+    --brand-soft: 34 30 72;
+    --brand-ink: 170 160 255;
+    --on-brand: 12 10 32;
+    --positive: 52 211 153;
+    --positive-soft: 8 44 34;
+    --live: 251 191 36;
+    --live-soft: 52 36 6;
+    --danger: 248 113 113;
+    --danger-soft: 58 18 22;
+    --info: 120 170 255;
+    --info-soft: 18 32 64;
+    --shadow: 0 0 0;
+  }
+
+  html {
+    @apply bg-canvas text-ink antialiased;
+    font-feature-settings: "ss01", "cv11";
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    @apply min-h-dvh font-sans;
+  }
+  ::selection {
+    background: rgb(var(--brand) / 0.22);
+  }
+  :focus-visible {
+    @apply outline-none shadow-focus;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  .tnum {
+    font-variant-numeric: tabular-nums lining-nums;
+  }
+  .eyebrow {
+    @apply text-2xs font-semibold uppercase tracking-[0.12em] text-ink-faint;
+  }
+  .hairline {
+    @apply border-line;
+  }
+  .bg-grid {
+    background-image:
+      linear-gradient(rgb(var(--line) / 0.7) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(var(--line) / 0.7) 1px, transparent 1px);
+    background-size: 44px 44px;
+    mask-image: radial-gradient(ellipse at 50% 0%, black 20%, transparent 70%);
+  }
+  .bg-aurora {
+    background:
+      radial-gradient(60% 50% at 20% 0%, rgb(var(--brand) / 0.18), transparent 70%),
+      radial-gradient(40% 40% at 85% 10%, rgb(var(--info) / 0.14), transparent 70%),
+      radial-gradient(40% 40% at 60% 90%, rgb(var(--positive) / 0.08), transparent 70%);
+  }
+  .skeleton {
+    background: linear-gradient(90deg, rgb(var(--surface-2)), rgb(var(--surface-3)), rgb(var(--surface-2)));
+    background-size: 200% 100%;
+    @apply animate-shimmer rounded-lg;
+  }
+}

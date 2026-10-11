@@ -1,0 +1,451 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-05T18:36:11+00:00",
+  "title": "Design System: ZeoAuction",
+  "extensions": {
+    "colorMeta": {
+      "green": {
+        "role": "primary",
+        "displayName": "Intaglio Green",
+        "canonical": "#1F4A3D",
+        "tonalRamp": [
+          "#17362C",
+          "#265A4A",
+          "#357E68",
+          "#44A285",
+          "#68C0A5",
+          "#9AD5C3",
+          "#C9E8DF",
+          "#EDF7F4"
+        ]
+      },
+      "green-deep": {
+        "role": "primary",
+        "displayName": "Deep Intaglio",
+        "canonical": "#14342A",
+        "tonalRamp": [
+          "#15372D",
+          "#235C4A",
+          "#328168",
+          "#40A686",
+          "#64C3A6",
+          "#98D7C4",
+          "#C8EADF",
+          "#EDF8F4"
+        ]
+      },
+      "green-soft": {
+        "role": "primary",
+        "displayName": "Soft Intaglio",
+        "canonical": "#2C5E4E",
+        "tonalRamp": [
+          "#18342B",
+          "#295748",
+          "#397A65",
+          "#499C82",
+          "#6DBBA2",
+          "#9ED1C1",
+          "#CBE7DE",
+          "#EEF7F4"
+        ]
+      },
+      "plum": {
+        "role": "secondary",
+        "displayName": "Aubergine Second Ink",
+        "canonical": "#6E2A55",
+        "tonalRamp": [
+          "#37152B",
+          "#5C2347",
+          "#813164",
+          "#A63F80",
+          "#C464A1",
+          "#D898C0",
+          "#EAC8DD",
+          "#F8EDF4"
+        ]
+      },
+      "serial": {
+        "role": "tertiary",
+        "displayName": "Serial Red",
+        "canonical": "#B3261E",
+        "tonalRamp": [
+          "#420E0B",
+          "#6D1712",
+          "#99201A",
+          "#C52A21",
+          "#E05048",
+          "#EB8A85",
+          "#F0C4C2",
+          "#FAEBEB"
+        ]
+      },
+      "alert": {
+        "role": "tertiary",
+        "displayName": "Alert Oxide",
+        "canonical": "#8C1C13",
+        "tonalRamp": [
+          "#430D09",
+          "#70160F",
+          "#9D1F15",
+          "#CA281B",
+          "#E54F42",
+          "#EE8981",
+          "#F0C5C2",
+          "#FAECEB"
+        ]
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Watermark Paper",
+        "canonical": "#EEF3F1",
+        "tonalRamp": [
+          "#202D28",
+          "#354B42",
+          "#4A695C",
+          "#5F8777",
+          "#81A698",
+          "#ABC4BA",
+          "#D2DFDA",
+          "#F0F4F3"
+        ]
+      },
+      "tint": {
+        "role": "neutral",
+        "displayName": "Note Tint",
+        "canonical": "#DFE9E6",
+        "tonalRamp": [
+          "#1F2D29",
+          "#344C44",
+          "#496A60",
+          "#5E887B",
+          "#80A89C",
+          "#AAC5BD",
+          "#D2E0DC",
+          "#F0F5F3"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Black Ink",
+        "canonical": "#121816",
+        "tonalRamp": [
+          "#212C28",
+          "#374943",
+          "#4C665E",
+          "#628378",
+          "#85A399",
+          "#ADC2BB",
+          "#D3DEDB",
+          "#F0F4F3"
+        ]
+      },
+      "ink-soft": {
+        "role": "neutral",
+        "displayName": "Soft Ink",
+        "canonical": "#43514B",
+        "tonalRamp": [
+          "#232A27",
+          "#3A4641",
+          "#51625A",
+          "#687E74",
+          "#8A9E95",
+          "#B1BEB9",
+          "#D5DCD9",
+          "#F1F3F2"
+        ]
+      },
+      "rule": {
+        "role": "neutral",
+        "displayName": "Fine Rule",
+        "canonical": "#A9BDB2",
+        "tonalRamp": [
+          "#212B26",
+          "#37483F",
+          "#4E6558",
+          "#648271",
+          "#86A292",
+          "#AEC1B7",
+          "#D4DED8",
+          "#F1F4F2"
+        ]
+      },
+      "rule-strong": {
+        "role": "neutral",
+        "displayName": "Control Rule",
+        "canonical": "#5D776B",
+        "tonalRamp": [
+          "#222B27",
+          "#384840",
+          "#4E645A",
+          "#658174",
+          "#87A195",
+          "#AFC0B8",
+          "#D4DDD9",
+          "#F1F4F2"
+        ]
+      },
+      "on-green": {
+        "role": "neutral",
+        "displayName": "Paper on Green",
+        "canonical": "#EEF3F1",
+        "tonalRamp": [
+          "#202D28",
+          "#354B42",
+          "#4A695C",
+          "#5F8777",
+          "#81A698",
+          "#ABC4BA",
+          "#D2DFDA",
+          "#F0F4F3"
+        ]
+      },
+      "on-green-soft": {
+        "role": "neutral",
+        "displayName": "Soft Paper on Green",
+        "canonical": "#C3D6CB",
+        "tonalRamp": [
+          "#1F2D25",
+          "#344C3E",
+          "#486A57",
+          "#5D886F",
+          "#80A891",
+          "#AAC5B5",
+          "#D2E0D8",
+          "#F0F5F2"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Landing headline on the note face, condensed green."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Section heads and the auth stub headline; page titles step up to 2.5rem / 3rem."
+      },
+      "denomination": {
+        "displayName": "Denomination",
+        "purpose": "Corner-cell values, settlement ordinals, stub facts; condensed tabular."
+      },
+      "price": {
+        "displayName": "Price",
+        "purpose": "The live current bid in the demo window."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Item names, stage titles, role leads."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Running copy, max 68ch."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Uppercase data labels, corner captions, window band, status mark."
+      },
+      "button": {
+        "displayName": "Button",
+        "purpose": "Button and masthead action text."
+      },
+      "micro": {
+        "displayName": "Microtext",
+        "purpose": "Decorative microtext rule line only; aria-hidden."
+      }
+    },
+    "shadows": [
+      {
+        "name": "double-rule",
+        "value": "0 3px 0 -2px currentColor",
+        "purpose": "Second hairline of a double rule (paired with border-top 1px). A line, not elevation; the system has no drop shadows."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-out",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "The only easing: colour transitions, settle, live pulse, time track."
+      },
+      {
+        "name": "duration-color",
+        "value": "150ms",
+        "purpose": "Button and field colour transitions."
+      },
+      {
+        "name": "settle",
+        "value": "420ms; from translateY(-0.14em), blur(1.5px), opacity 0.55 to rest",
+        "purpose": "A new price re-sets when a bid lands."
+      },
+      {
+        "name": "live-pulse",
+        "value": "2s infinite; opacity 1 to 0.35",
+        "purpose": "The serial-red live dot."
+      },
+      {
+        "name": "track",
+        "value": "700ms width",
+        "purpose": "Countdown track drain."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "animation and transition 0.01ms",
+        "purpose": "Figures still update; nothing animates."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "note-single-column",
+        "value": "max-width 479px"
+      },
+      {
+        "name": "sm",
+        "value": "640px"
+      },
+      {
+        "name": "md",
+        "value": "768px"
+      },
+      {
+        "name": "lg",
+        "value": "1024px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one solid green action on paper; Create account on the note's signature line and form submits.",
+      "html": "<button class=\"ds-btn-primary\">Create account <svg viewBox=\"0 0 20 20\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"square\" stroke-linejoin=\"miter\" aria-hidden=\"true\"><path d=\"M3 10h13m-5-5 5 5-5 5\"/></svg></button>",
+      "css": ".ds-btn-primary{font-family:'Archivo Variable',system-ui,sans-serif;display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 20px;border:1px solid;border-radius:0;font-size:14px;line-height:20px;font-weight:600;font-stretch:92%;letter-spacing:0.01em;word-spacing:0.08em;cursor:pointer;transition:background-color 150ms cubic-bezier(0.16,1,0.3,1),border-color 150ms cubic-bezier(0.16,1,0.3,1),color 150ms cubic-bezier(0.16,1,0.3,1);background:#1F4A3D;border-color:#1F4A3D;color:#EEF3F1;} .ds-btn-primary:hover{background:#14342A;border-color:#14342A;} .ds-btn-primary:focus-visible{outline:2px solid #6E2A55;outline-offset:3px;} .ds-btn-primary:disabled{background:#5D776B;border-color:#5D776B;cursor:not-allowed;}"
+    },
+    {
+      "name": "Paper Button (on green)",
+      "kind": "button",
+      "refersTo": "button-paper",
+      "description": "The primary action inside green fields: masthead and closing band.",
+      "html": "<div class=\"ds-green-field\"><button class=\"ds-btn-paper\">Create account</button></div>",
+      "css": ".ds-green-field{background:#1F4A3D;padding:20px;} .ds-btn-paper{font-family:'Archivo Variable',system-ui,sans-serif;display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 20px;border:1px solid;border-radius:0;font-size:14px;line-height:20px;font-weight:600;font-stretch:92%;letter-spacing:0.01em;word-spacing:0.08em;cursor:pointer;transition:background-color 150ms cubic-bezier(0.16,1,0.3,1),border-color 150ms cubic-bezier(0.16,1,0.3,1),color 150ms cubic-bezier(0.16,1,0.3,1);background:#EEF3F1;border-color:#EEF3F1;color:#1F4A3D;} .ds-btn-paper:hover{background:#DFE9E6;} .ds-btn-paper:focus-visible{outline:2px solid #EEF3F1;outline-offset:3px;}"
+    },
+    {
+      "name": "Ghost Button (on green)",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Secondary action inside green fields: Log in in the closing band, Log out in the masthead.",
+      "html": "<div class=\"ds-green-field\"><button class=\"ds-btn-ghost\">Log in</button></div>",
+      "css": ".ds-green-field{background:#1F4A3D;padding:20px;} .ds-btn-ghost{font-family:'Archivo Variable',system-ui,sans-serif;display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 20px;border:1px solid;border-radius:0;font-size:14px;line-height:20px;font-weight:600;font-stretch:92%;letter-spacing:0.01em;word-spacing:0.08em;cursor:pointer;transition:background-color 150ms cubic-bezier(0.16,1,0.3,1),border-color 150ms cubic-bezier(0.16,1,0.3,1),color 150ms cubic-bezier(0.16,1,0.3,1);background:transparent;border-color:#C3D6CB;color:#EEF3F1;} .ds-btn-ghost:hover{background:#2C5E4E;border-color:#EEF3F1;} .ds-btn-ghost:focus-visible{outline:2px solid #EEF3F1;outline-offset:3px;}"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "text-field",
+      "description": "Square paper field with a control-rule border; tint fill and aubergine outline on focus; alert oxide on error.",
+      "html": "<div class=\"ds-field\"><label class=\"ds-field-label\" for=\"ds-email\">Email address</label><input id=\"ds-email\" class=\"ds-input\" type=\"email\" placeholder=\"buyer1@zeo.local\"><label class=\"ds-field-label ds-gap\" for=\"ds-pw\">Password</label><input id=\"ds-pw\" class=\"ds-input ds-input-error\" type=\"password\" aria-invalid=\"true\"><p class=\"ds-field-error\"><svg viewBox=\"0 0 20 20\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"square\" stroke-linejoin=\"miter\" aria-hidden=\"true\"><path d=\"M10 3 18 17H2L10 3Zm0 5v4m0 2.5v.5\"/></svg>Enter your password</p></div>",
+      "css": ".ds-field{font-family:'Archivo Variable',system-ui,sans-serif;max-width:30rem;background:#EEF3F1;padding:16px;} .ds-field-label{display:block;font-size:14px;font-weight:600;font-stretch:82%;color:#121816;} .ds-gap{margin-top:20px;} .ds-input{display:block;width:100%;min-height:48px;margin-top:8px;padding:0 14px;border:1px solid #5D776B;border-radius:0;background:#EEF3F1;color:#121816;font:inherit;font-size:16px;font-variant-numeric:tabular-nums lining-nums;transition:background-color 150ms cubic-bezier(0.16,1,0.3,1),border-color 150ms cubic-bezier(0.16,1,0.3,1);} .ds-input::placeholder{color:#43514B;opacity:1;} .ds-input:hover{border-color:#121816;} .ds-input:focus{outline:none;background:#DFE9E6;} .ds-input:focus-visible{outline:2px solid #6E2A55;outline-offset:0;} .ds-input-error,.ds-input-error:hover{border-color:#8C1C13;} .ds-field-error{display:flex;gap:6px;align-items:flex-start;margin:8px 0 0;font-size:14px;font-weight:500;color:#8C1C13;}"
+    },
+    {
+      "name": "Masthead",
+      "kind": "nav",
+      "refersTo": "window-band",
+      "description": "64px intaglio green bar: framed-Z wordmark, Log in link, paper Create account, and the deep-green microtext strip.",
+      "html": "<header class=\"ds-mast\"><div class=\"ds-mast-bar\"><a class=\"ds-wordmark\" href=\"#\"><svg viewBox=\"0 0 32 32\" width=\"32\" height=\"32\" aria-hidden=\"true\"><rect x=\"0.5\" y=\"0.5\" width=\"31\" height=\"31\" fill=\"none\" stroke=\"currentColor\"/><rect x=\"3.5\" y=\"3.5\" width=\"25\" height=\"25\" fill=\"none\" stroke=\"currentColor\" stroke-opacity=\"0.55\"/><path d=\"M10 10h12L10 22h12\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"square\"/></svg><span>Zeo<b>Auction</b></span></a><nav class=\"ds-mast-nav\"><a class=\"ds-mast-link\" href=\"#\">Log in</a><a class=\"ds-mast-cta\" href=\"#\">Create account</a></nav></div><div class=\"ds-mast-micro\" aria-hidden=\"true\">ZEOAUCTION · LIVE AUCTIONS · ESCROW SIMULATION · TEST MODE · ZEOAUCTION · LIVE AUCTIONS · ESCROW SIMULATION · TEST MODE · ZEOAUCTION · LIVE AUCTIONS · ESCROW SIMULATION · TEST MODE · ZEOAUCTION · LIVE AUCTIONS · ESCROW SIMULATION · TEST MODE · ZEOAUCTION · LIVE AUCTIONS · ESCROW SIMULATION · TEST MODE · ZEOAUCTION · LIVE AUCTIONS · ESCROW SIMULATION · TEST MODE · </div></header>",
+      "css": ".ds-mast{font-family:'Archivo Variable',system-ui,sans-serif;background:#1F4A3D;color:#EEF3F1;} .ds-mast-bar{display:flex;align-items:center;justify-content:space-between;gap:16px;height:64px;padding:0 24px;} .ds-wordmark{display:inline-flex;align-items:center;gap:10px;color:#EEF3F1;text-decoration:none;} .ds-wordmark span{font-size:1.4rem;font-weight:800;font-stretch:66%;word-spacing:0.08em;letter-spacing:0.04em;text-transform:uppercase;line-height:1;} .ds-wordmark b{font-weight:500;} .ds-mast-nav{display:flex;align-items:center;gap:12px;} .ds-mast-link{min-height:44px;display:inline-flex;align-items:center;padding:0 12px;color:#EEF3F1;font-size:14px;font-weight:600;text-decoration:none;} .ds-mast-link:hover{text-decoration:underline;text-underline-offset:0.22em;} .ds-mast-cta{display:inline-flex;align-items:center;min-height:40px;padding:0 16px;background:#EEF3F1;color:#1F4A3D;border:1px solid #EEF3F1;font-size:14px;font-weight:600;font-stretch:92%;word-spacing:0.08em;text-decoration:none;transition:background-color 150ms cubic-bezier(0.16,1,0.3,1);} .ds-mast-cta:hover{background:#DFE9E6;} .ds-mast-link:focus-visible,.ds-mast-cta:focus-visible{outline:2px solid #EEF3F1;outline-offset:3px;} .ds-mast-micro{background:#14342A;border-top:1px solid #2C5E4E;padding:3px 0;overflow:hidden;white-space:nowrap;font-size:7px;line-height:1;font-weight:500;font-stretch:118%;letter-spacing:0.08em;text-transform:uppercase;color:#C3D6CB;user-select:none;}"
+    },
+    {
+      "name": "Corner Value Cell",
+      "kind": "card",
+      "refersTo": "corner-cell",
+      "description": "The note's denomination panel: double frame, condensed tabular value, uppercase caption, one sentence.",
+      "html": "<div class=\"ds-cells\"><div class=\"ds-corner\"><p class=\"ds-corner-value\">$25.00</p><h3 class=\"ds-corner-label\">Flat fee, shown first</h3><p class=\"ds-corner-body\">Added only if you win, and shown before you bid.</p></div><div class=\"ds-corner\"><p class=\"ds-corner-value ds-serial\">000142</p><h3 class=\"ds-corner-label\">Server order</h3><p class=\"ds-corner-body\">The server numbers every bid as it arrives.</p></div></div>",
+      "css": ".ds-cells{font-family:'Archivo Variable',system-ui,sans-serif;display:grid;grid-template-columns:1fr 1fr;gap:16px;background:#DFE9E6;padding:16px;} .ds-corner{display:flex;flex-direction:column;gap:8px;padding:20px;background:#EEF3F1;border:1px solid #1F4A3D;outline:1px solid #A9BDB2;outline-offset:-5px;} .ds-corner-value{margin:0;font-size:3rem;line-height:0.9;font-weight:800;font-stretch:66%;word-spacing:0.08em;letter-spacing:-0.005em;text-transform:uppercase;color:#1F4A3D;font-variant-numeric:tabular-nums lining-nums;} .ds-serial{color:#B3261E;} .ds-corner-label{margin:0;font-size:12px;line-height:16px;letter-spacing:0.06em;font-weight:700;font-stretch:82%;text-transform:uppercase;color:#121816;} .ds-corner-body{margin:0;font-size:14px;line-height:1.625;color:#43514B;}"
+    },
+    {
+      "name": "Fee Ledger with Double Rule",
+      "kind": "custom",
+      "refersTo": "note-field",
+      "description": "Bid, flat fee, and total closed by a double rule; tabular figures throughout.",
+      "html": "<dl class=\"ds-ledger\"><div class=\"ds-row\"><dt>Bid</dt><dd>$1,200.00</dd></div><div class=\"ds-row\"><dt>Flat fee if you win</dt><dd>+ $25.00</dd></div><div class=\"ds-row ds-total\"><dt>Total if you win</dt><dd>$1,225.00</dd></div></dl>",
+      "css": ".ds-ledger{font-family:'Archivo Variable',system-ui,sans-serif;margin:0;max-width:320px;background:#EEF3F1;padding:16px;font-size:14px;font-variant-numeric:tabular-nums lining-nums;color:#121816;} .ds-row{display:flex;justify-content:space-between;align-items:baseline;gap:16px;padding:4px 0;} .ds-row dt{color:#43514B;} .ds-row dd{margin:0;} .ds-total{margin-top:4px;padding-top:8px;border-top:1px solid currentColor;box-shadow:0 3px 0 -2px currentColor;} .ds-total dt{color:#121816;font-weight:600;} .ds-total dd{font-size:16px;font-weight:700;}"
+    },
+    {
+      "name": "Status Mark and Time Track",
+      "kind": "custom",
+      "refersTo": "status-mark",
+      "description": "Square live mark with the breathing serial-red dot, and the countdown track with the aubergine anti-snipe hatch.",
+      "html": "<div class=\"ds-live\"><p class=\"ds-status\"><span class=\"ds-dot\" aria-hidden=\"true\"></span>Live · Extended ×1</p><p class=\"ds-ends\">Ends in <span>00:01:42</span></p><div class=\"ds-track\" aria-hidden=\"true\"><div class=\"ds-hatch\"></div><div class=\"ds-fill\"></div></div></div>",
+      "css": ".ds-live{font-family:'Archivo Variable',system-ui,sans-serif;background:#EEF3F1;padding:16px;max-width:420px;} .ds-status{display:inline-flex;align-items:center;gap:8px;margin:0;padding:4px 10px;border:1px solid #121816;font-size:12px;line-height:16px;letter-spacing:0.06em;font-weight:600;font-stretch:82%;text-transform:uppercase;color:#121816;} .ds-dot{width:8px;height:8px;background:#B3261E;animation:ds-pulse 2s cubic-bezier(0.16,1,0.3,1) infinite;} @keyframes ds-pulse{0%,100%{opacity:1}50%{opacity:0.35}} .ds-ends{margin:16px 0 0;font-size:14px;color:#43514B;} .ds-ends span{font-weight:600;color:#6E2A55;font-variant-numeric:tabular-nums lining-nums;} .ds-track{position:relative;height:12px;margin-top:8px;border:1px solid #5D776B;background:#DFE9E6;} .ds-hatch{position:absolute;top:0;bottom:0;left:0;width:40%;background-image:repeating-linear-gradient(135deg,#6E2A55 0 1px,transparent 1px 5px);opacity:0.55;} .ds-fill{position:absolute;top:0;bottom:0;left:0;width:34%;background:#1F4A3D;transition:width 700ms cubic-bezier(0.16,1,0.3,1);} @media (prefers-reduced-motion:reduce){.ds-dot{animation:none}}"
+    },
+    {
+      "name": "Simulation Notice",
+      "kind": "custom",
+      "refersTo": "note-field",
+      "description": "Tint panel with control-rule frame stating test mode and simulated escrow wherever money moves.",
+      "html": "<div class=\"ds-sim\" role=\"note\"><span class=\"ds-sim-icon\"><svg viewBox=\"0 0 20 20\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"square\" stroke-linejoin=\"miter\" aria-hidden=\"true\"><path d=\"M10 3 18 17H2L10 3Zm0 5v4m0 2.5v.5\"/></svg></span><p><b>Simulation.</b> Payments run in test mode and escrow is simulated. No real money moves on ZeoAuction.</p></div>",
+      "css": ".ds-sim{font-family:'Archivo Variable',system-ui,sans-serif;display:flex;gap:12px;max-width:480px;padding:12px 16px;border:1px solid #5D776B;background:#DFE9E6;font-size:14px;line-height:1.5;color:#121816;} .ds-sim p{margin:0;} .ds-sim-icon{color:#6E2A55;flex-shrink:0;margin-top:2px;}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Security Print",
+    "overview": "ZeoAuction is set like the face of a banknote or a bank cheque: the most-trusted printed instrument people handle. Everything is type, rules and figures. There is no photography and no illustration; trust comes from intaglio green fields, double fine-line frames, corner value cells, a microtext rule line and tabular numerals that never shift. The live auction sits in the note's portrait window, and the safeguards are printed around it rather than promised in copy.\n\nDensity is that of a financial instrument: tight, ruled, legible at arm's length. Hierarchy is carried by the width axis of a single variable face (Archivo): denominations and display set condensed, labels semi-condensed, body at normal width, microtext wide. Colour is a printer's ink set, not a UI palette: one dominant green, one black, one second ink (aubergine), and serial red used as sparingly as on a real note.\n\nMotion is quiet and mechanical: a figure re-sets when a new bid lands, the live dot breathes, the time track drains. Under reduced motion, figures still update but nothing animates.",
+    "keyCharacteristics": [
+      "Intaglio green owns the masthead, the note's frame field, the stub and the closing band.",
+      "Cool watermark-pale ground; never cream.",
+      "Square corners everywhere; depth is frame-within-frame, never shadow.",
+      "Archivo variable on its width axis; tabular lining figures wherever money, time or sequence appears.",
+      "Hairline, dashed and double rules do the structural work that cards and shadows do elsewhere.",
+      "Every surface that mentions money states that payments are test mode and escrow is simulated."
+    ],
+    "rules": [
+      {
+        "name": "The Serial Red Rule",
+        "body": "Serial red marks bid sequence numbers and the live dot, and nothing else. Errors use alert oxide; emphasis uses weight or green.",
+        "section": "colors"
+      },
+      {
+        "name": "The Cool Paper Rule",
+        "body": "The ground is watermark-pale and cool (blue at or above red). Never cream, never warm off-white, never pure white.",
+        "section": "colors"
+      },
+      {
+        "name": "The Second Ink Rule",
+        "body": "Aubergine is reserved for links, focus and the anti-snipe guard. If it is decorating, it is wrong.",
+        "section": "colors"
+      },
+      {
+        "name": "The Denomination Rule",
+        "body": "Every figure of money, time or sequence is set with tabular lining numerals, so a ticking value never shifts its neighbours. Large figures are condensed.",
+        "section": "typography"
+      },
+      {
+        "name": "The Width Axis Rule",
+        "body": "Condensed for display and denominations, semi-condensed for labels and titles, normal for reading, wide only for microtext and the test-mode disclosure caption. Condensed text and buttons carry 0.08em word spacing so narrow words do not run together.",
+        "section": "typography"
+      },
+      {
+        "name": "The Printed-Flat Rule",
+        "body": "No drop shadows and no elevation levels. To separate a surface, frame it: border, inset keyline, or a green field.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** use palette and type tokens by name in screen code: no raw hex and no font names.",
+      "**Do** set every money, time and sequence figure with tabular lining numerals (`'tnum' 1, 'lnum' 1`).",
+      "**Do** frame surfaces with a 1px green border and a fine-rule keyline inset 5px instead of lifting them.",
+      "**Do** reserve serial red for bid sequence numbers and the live dot.",
+      "**Do** keep text pairs at WCAG 2.1 AA and control borders at 3:1 or more on paper (control rule #5D776B, not fine rule).",
+      "**Do** say \"test mode\" and \"simulated escrow\" in plain words on any surface that shows money.",
+      "**Do** honour prefers-reduced-motion: figures update, nothing animates."
+    ],
+    "donts": [
+      "**Don't** round corners; the radius scale is zero.",
+      "**Don't** add drop shadows, glows or elevation; `box-shadow` only draws the second line of a double rule.",
+      "**Don't** use photography, device mockups or stock illustration; the world is set type, rules and figures.",
+      "**Don't** warm the ground toward cream or ivory.",
+      "**Don't** use serial red for errors, emphasis or decoration; errors use alert oxide.",
+      "**Don't** use tonal or colour gradients; a repeating linear gradient is allowed only as 1px hatch line-work.",
+      "**Don't** use icon fonts, emoji or text glyphs as icons; extend the authored 20px, 1.5-stroke, square-cap set.",
+      "**Don't** put information in microtext; it is decorative and hidden from assistive tech."
+    ]
+  }
+}
