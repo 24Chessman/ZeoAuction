@@ -1,0 +1,14 @@
+# Platform-wide error codes returned by every service through the uniform error envelope.
+# Implemented in libs/zeo-common/zeo_common/errors.py. Owner: Ayush.
+version: 1
+codes:
+  - { code: BAD_REQUEST,        http: 400, condition: "Malformed request that failed before validation." }
+  - { code: UNAUTHENTICATED,    http: 401, condition: "Missing, expired or invalid bearer token." }
+  - { code: FORBIDDEN,          http: 403, condition: "Authenticated but not permitted (role gate)." }
+  - { code: NOT_FOUND,          http: 404, condition: "Resource or route does not exist." }
+  - { code: METHOD_NOT_ALLOWED, http: 405, condition: "HTTP method not supported on this route." }
+  - { code: CONFLICT,           http: 409, condition: "Generic state conflict without a more specific code." }
+  - { code: VALIDATION_ERROR,   http: 422, condition: "Request body, query or headers failed validation; details.errors lists each problem." }
+  - { code: RATE_LIMITED,       http: 429, condition: "Per-connection or per-user limit exceeded." }
+  - { code: INTERNAL_ERROR,     http: 500, condition: "Unhandled server error. Internals are never exposed." }
+  - { code: SERVICE_UNAVAILABLE, http: 503, condition: "A required dependency (for example the Kafka broker) is down; nothing was changed and the request can be retried with the same Idempotency-Key." }

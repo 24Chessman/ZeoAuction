@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "zeo-common"
+version = "0.1.0"
+description = "Shared service template for ZeoAuction: app factory, health, metrics, error envelope, money, settings, auth gateway, object storage, PostgreSQL and Redis helpers."
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115,<1",
+    "uvicorn[standard]>=0.30",
+    "prometheus-client>=0.20",
+    "asyncpg>=0.29",
+    "redis>=5.0",
+    "pyjwt>=2.9",
+    "httpx>=0.27",
+]
+
+[tool.setuptools]
+packages = ["zeo_common"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
