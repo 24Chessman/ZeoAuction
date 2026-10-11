@@ -1,0 +1,164 @@
+# CI (owner: Ayush, #90). Every pull request runs:
+#   lint -> unit tests with an 80% coverage floor per suite -> per-service image builds,
+# plus the contract tests and Compose validation. Merges are blocked unless
+# the `gate` job passes (AC-15): mark `gate` as the required status check in branch protection.
+# The consumer-driven contract stage and the end-to-end stage are stubs until Plan 7 (#26, #99).
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.11"
+  COVERAGE_FLOOR: "80"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install "ruff>=0.6"
+      - run: ruff check . --output-format=github
+
+  shared-library:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install ./libs/zeo-common -r requirements-dev.txt
+      - name: Unit tests (coverage floor)
+        run: >
+          pytest libs/zeo-common --cov=zeo_common --cov-config=pyproject.toml
+          --cov-report=term-missing --cov-fail-under=${{ env.COVERAGE_FLOOR }}
+
+  contracts:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - run: pytest tests/contracts
+
+  services:
+    needs: lint
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - auth-user
+          - kyc
+          - auction-orchestrator
+          - bid
+          - pricing
+          - payment-escrow
+          - dispute
+          - search-analytics
+          - admin-moderation
+          - ws-gateway
+          - fraud-detector
+          - bid-flusher
+          - escrow-sweep
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install ./libs/zeo-common -r services/${{ matrix.service }}/requirements.txt -r requirements-dev.txt
+      - name: Unit tests (coverage floor)
+        working-directory: services/${{ matrix.service }}
+        # Every top-level package of the service is measured (app/, and dataset/ where present).
+        run: |
+          cov=""
+          for pkg in app dataset; do
+            if [ -d "$pkg" ]; then cov="$cov --cov=$pkg"; fi
+          done
+          pytest $cov --cov-config=../../pyproject.toml --cov-report=term-missing \
+            --cov-fail-under=${{ env.COVERAGE_FLOOR }}
+
+  images:
+    needs: services
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - auth-user
+          - kyc
+          - auction-orchestrator
+          - bid
+          - pricing
+          - payment-escrow
+          - dispute
+          - search-analytics
+          - admin-moderation
+          - ws-gateway
+          - fraud-detector
+          - bid-flusher
+          - escrow-sweep
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build image (not pushed)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: services/${{ matrix.service }}/Dockerfile
+          push: false
+          tags: zeoauction/${{ matrix.service }}:ci-${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate docker-compose.yml
+        run: docker compose config --quiet
+
+  contract-tests:
+    # Consumer-driven contract tests against running providers (CT-1, CT-3): Plan 7, #26.
+    needs: services
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Stub until Plan 7 (#26). Unit suites already validate CT-1/CT-3 shapes."
+
+  end-to-end:
+    # Full Compose stack + end-to-end journeys: Plan 7, #99.
+    needs: [images, compose]
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Stub until Plan 7 (#99)."
+
+  gate:
+    # The single required check for branch protection.
+    if: always()
+    needs: [lint, shared-library, contracts, services, images, compose, contract-tests, end-to-end]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every required job passed
+        run: |
+          echo '${{ toJSON(needs) }}' | python3 -c '
+          import json, sys
+          needs = json.load(sys.stdin)
+          failed = [name for name, job in needs.items() if job["result"] != "success"]
+          print("failed:", failed or "none")
+          sys.exit(1 if failed else 0)'

@@ -1,0 +1,29 @@
+# Replace each <handle> with the member's GitHub username, then uncomment.
+# GitHub then requests the owner's review automatically on every PR that touches their area.
+#
+# /libs/zeo-common/                      @<ayush>
+# /infra/                                @<ayush>
+# /docker-compose.yml                    @<ayush>
+# /render.yaml                           @<ayush>
+# /.github/                              @<ayush>
+# /services/auth-user/                   @<ayush>
+# /services/ws-gateway/                  @<ayush>
+# /services/bid/                         @<naitik>
+# /services/escrow-sweep/                @<naitik>
+# /services/auction-orchestrator/        @<sumit>
+# /services/bid-flusher/                 @<sumit>
+# /services/kyc/                         @<sagar>
+# /services/pricing/                     @<sagar>
+# /services/search-analytics/            @<sagar>
+# /services/fraud-detector/              @<harshal>
+# /services/payment-escrow/              @<jaydip>
+# /services/dispute/                     @<jay>
+# /services/admin-moderation/            @<jay>
+# /contracts/openapi/bid-service.v1.yaml @<naitik>
+# /contracts/openapi/internal/auction-state.v1.yaml @<sumit>
+# /contracts/openapi/internal/pricing.v1.yaml @<sagar>
+# /contracts/events/                     @<sumit> @<harshal>
+# /contracts/events/settlement_step.v1.json @<jaydip>
+# /infra/postgres/init/60-payment.sql    @<jaydip>
+# /config/settlement-policy.yaml         @<jaydip> @<sumit>
+# /docs/                                 @<sumit>
