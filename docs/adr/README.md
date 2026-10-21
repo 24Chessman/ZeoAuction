@@ -20,5 +20,6 @@ the owners in Plan 7, and until then the SDD summary is binding. ADR-0009 onward
 | [0010](0010-third-party-services.md) | Push notifications and image hosting | **Proposed** | Ayush / Gaurang | Plan 1 |
 | [0011](0011-settlement-policy.md) | Settlement policy numbers (₹99 fee, window, anti-snipe) | **Accepted** (2026-10-10) | Jaydip / Sumit | Plan 1 |
 | [0012](0012-repository-and-platform-conventions.md) | Monorepo, service template, schema-per-service | **Proposed** | Ayush | Plan 1 |
+| [0013](0013-aadhaar-secure-qr-and-face-match.md) | Seller KYC by Aadhaar Secure QR and a live face match | **Proposed** | Sagar | 2026-10-20 |
 
 A Proposed ADR becomes Accepted when it's approved at the end-of-plan review, with at least two approvals on its PR.

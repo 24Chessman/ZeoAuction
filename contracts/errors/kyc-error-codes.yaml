@@ -1,0 +1,47 @@
+# KYC error codes: Aadhaar Secure QR and the live face check (ADR-0013).
+# Owner: Sagar. Delivered in the uniform error envelope {code, message, details, request_id}.
+# Platform-wide codes (FORBIDDEN, NOT_FOUND, CONFLICT, VALIDATION_ERROR, ...) live in
+# common-error-codes.yaml.
+#
+# Versioning as for bid-rejection-codes.yaml: adding a code or a reason is a minor bump;
+# changing a code's meaning or HTTP status is breaking.
+#
+# retryable  true = retry the same request later; false = refused again until something changes.
+# services/kyc/tests/test_error_codes.py checks the service raises only these codes (plus the
+# common ones).
+# 2.0.0 (2026-10-20): AADHAAR_INVALID reasons for the Secure QR replace the offline XML ones.
+version: "2.0.0"
+codes:
+  - code: KYC_ALREADY_ACTIVE
+    http: 409
+    retryable: false
+    details: [state]
+    condition: "A verification is under review, approved or suspended, or the face check already has a counted attempt, so a new Aadhaar upload is refused."
+  - code: KYC_COOLDOWN
+    http: 409
+    retryable: true
+    details: [retry_after]
+    condition: "The last submission was rejected by the face check after the maximum attempts; a new upload is accepted from retry_after (ISO 8601, UTC)."
+  - code: AADHAAR_INVALID
+    http: 422
+    retryable: false
+    details: [reason, field]
+    reasons:
+      - not_image          # empty, not a JPEG/PNG/WebP, or undecodable
+      - too_large          # photo over 8 MB
+      - no_qr              # no QR code found in the photo
+      - not_secure_qr      # a QR, but not an Aadhaar Secure QR (e.g. the old unsigned XML QR)
+      - malformed_qr       # a Secure QR with a truncated or unreadable payload or holder fields
+      - signature_invalid  # changed after signing, or not signed by a trusted (UIDAI) key
+      - stale              # older than KYC_AADHAAR_MAX_AGE_HOURS (off by default)
+      - from_future
+      - no_photo
+      - underage           # sellers must be 18 or older
+      - mobile_mismatch    # the optional mobile number does not match the QR (field = mobile)
+    condition: "The photographed Aadhaar Secure QR failed verification (field = qr_image unless noted). Nothing was stored."
+  - code: FACE_CAPTURE_INVALID
+    http: 422
+    retryable: false
+    details: [reason, field]
+    reasons: [frame_count, empty, too_large, unsupported_format]
+    condition: "The face-check request itself is unusable (wrong number of frames, or a frame that is not a JPEG/PNG within the size limit). Not counted as an attempt."

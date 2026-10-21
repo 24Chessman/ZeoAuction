@@ -135,10 +135,15 @@ The database's partial unique index guarantees at most one `RELEASE`/`REFUND` ro
 
 ## 3. Seller verification (KYC, `kyc.kyc_submissions.state` mirrored to `auth.users.kyc_status`)
 
+Aadhaar Secure QR plus a live face match (ADR-0013, `services/kyc/README.md`). The face check decides most
+cases itself; an administrator sees only the close ones.
+
 ```mermaid
 stateDiagram-v2
-    [*] --> SUBMITTED: submit
-    SUBMITTED --> UNDER_REVIEW: startReview
+    [*] --> SUBMITTED: submit (Aadhaar QR verified)
+    SUBMITTED --> VERIFIED: faceMatch
+    SUBMITTED --> UNDER_REVIEW: faceReview
+    SUBMITTED --> REJECTED: faceFail / withdraw
     UNDER_REVIEW --> VERIFIED: approve
     UNDER_REVIEW --> REJECTED: reject
     REJECTED --> SUBMITTED: resubmit
@@ -148,13 +153,19 @@ stateDiagram-v2
 
 | # | Event | From | To | Guard | Effect |
 |---|---|---|---|---|---|
-| K1 | `submit` | – (user `NOT_SUBMITTED`) | SUBMITTED | Required documents uploaded and validated (type, size ≤ 10 MB, MIME) | Mirror `kyc_status` updated |
-| K2 | `startReview` | SUBMITTED | UNDER_REVIEW | Admin opens the submission | Opening a document is itself audited |
+| K1 | `submit` | – (user `NOT_SUBMITTED`) | SUBMITTED | Photo holds an Aadhaar Secure QR; UIDAI signature valid; holder 18+; mobile matches if given (QR age limit optional, off by default) | Mirror updated; Aadhaar summary, face template and photo stored |
+| K2 | `faceReview` | SUBMITTED | UNDER_REVIEW | Face check: median similarity in the review band (0.30–0.42), or no usable face in the Aadhaar photo; liveness passed | Best frame kept for the reviewer. Opening an image is itself audited |
 | K3 | `approve` | UNDER_REVIEW | VERIFIED | Admin | Mirror → VERIFIED; `token_version += 1` **forces token refresh**, so the listing gate sees it immediately |
-| K4 | `reject` | UNDER_REVIEW | REJECTED | Admin; **reason required** | Reason returned to the seller; upload re-enabled |
-| K5 | `resubmit` | REJECTED | SUBMITTED | New documents | A new submission row (the old one is kept for audit) |
+| K3a | `faceMatch` | SUBMITTED | VERIFIED | Face check: median ≥ 0.42, every frame ≥ 0.30, head turned | As K3, without an administrator |
+| K4 | `reject` | UNDER_REVIEW | REJECTED | Admin; **reason required** | Reason returned to the seller; a new upload is allowed at once |
+| K4a | `faceFail` | SUBMITTED | REJECTED | The 3rd counted face failure (`NO_MATCH` or `LIVENESS_FAILED`) | New upload refused for 24 h (`KYC_COOLDOWN`) |
+| K4b | `withdraw` | SUBMITTED | REJECTED | Seller uploads a different QR before any counted face attempt | The new upload is K5 |
+| K5 | `resubmit` | REJECTED | SUBMITTED | As K1 | A new submission row (the old one is kept for audit) |
 | K6 | `suspend` | VERIFIED | SUSPENDED | Admin; reason code required | Mirror → SUSPENDED; forced token refresh; listing refused |
 | K7 | `reinstate` | SUSPENDED | VERIFIED | Admin | Mirror → VERIFIED; forced token refresh |
+
+Every face check is appended to `kyc.face_match_attempts` in the same transaction as the transition it causes.
+`NO_FACE` attempts don't count.
 
 REJECTED is recoverable, not terminal. SUSPENDED is reversible.
 
