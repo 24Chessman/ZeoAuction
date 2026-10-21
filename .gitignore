@@ -35,6 +35,17 @@ node_modules/
 frontend/dist/
 frontend/coverage/
 
+
+
 # Load-test host outputs (infra/loadtest/provision.sh)
 infra/loadtest/ids.txt
 infra/loadtest/host-info.txt
+
+CLAUDE.md
+DESIGN.md
+PRODUCT.md
+
+# KYC face models (scripts/fetch_face_models.py) and the synthetic e-KYC dev signing key
+services/kyc/models/
+services/kyc/dev-certs/
+*.onnx
