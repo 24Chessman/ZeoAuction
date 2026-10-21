@@ -4,7 +4,7 @@ import { toMoneyString, type Cents } from "../money";
 import { request } from "./http";
 import type {
   AdminSubmission, Auction, BidAccepted, BidPage, CheckoutSession, CreateAuction, DocumentUrl, FeeQuote,
-  KycFiles, KycSubmission, LedgerEntry, Order, PaymentConfirmation, Profile, QueuePage, TokenPair,
+  FaceCheckResult, KycSubmission, LedgerEntry, Order, PaymentConfirmation, Profile, QueuePage, TokenPair,
 } from "./types";
 
 export * from "./types";
@@ -130,12 +130,18 @@ export const orderApi = {
 };
 
 export const kycApi = {
-  async submit(files: KycFiles): Promise<KycSubmission> {
+  /** Step 1: a photo of the Aadhaar Secure QR code (services/kyc). */
+  async uploadAadhaar(qrImage: File, mobile?: string): Promise<KycSubmission> {
     const form = new FormData();
-    if (files.GOVERNMENT_ID) form.append("government_id", files.GOVERNMENT_ID);
-    if (files.PROOF_OF_ADDRESS) form.append("proof_of_address", files.PROOF_OF_ADDRESS);
-    if (files.SELFIE) form.append("selfie", files.SELFIE);
-    return (await request<KycSubmission>("kyc", "POST", "/api/v1/kyc/submissions", { auth: true, form })).data;
+    form.append("qr_image", qrImage);
+    if (mobile) form.append("mobile", mobile);
+    return (await request<KycSubmission>("kyc", "POST", "/api/v1/kyc/aadhaar", { auth: true, form })).data;
+  },
+  /** Step 2: live camera frames, matched against the Aadhaar photo on the server. */
+  async faceCheck(submissionId: string, frames: Blob[]): Promise<FaceCheckResult> {
+    const form = new FormData();
+    frames.forEach((frame, i) => form.append("frames", frame, `frame-${i}.jpg`));
+    return (await request<FaceCheckResult>("kyc", "POST", `/api/v1/kyc/submissions/${submissionId}/face`, { auth: true, form })).data;
   },
   /** The caller's latest submission, or null before the first one. */
   async mine(): Promise<KycSubmission | null> {
@@ -148,7 +154,7 @@ export const kycApi = {
   },
 };
 
-export type AdminKycEvent = "start-review" | "approve" | "reject" | "suspend" | "reinstate";
+export type AdminKycEvent = "approve" | "reject" | "suspend" | "reinstate";
 
 export const adminKycApi = {
   async queue(limit = 50, offset = 0): Promise<QueuePage> {

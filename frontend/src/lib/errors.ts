@@ -36,7 +36,7 @@ export const ERROR_COPY: Record<string, Copy> = {
   // Bid taxonomy v1.0.0
   SELLER_NOT_VERIFIED: {
     title: "Seller verification required",
-    hint: "An administrator has to approve your identity documents before you can list.",
+    hint: "Verify with your Aadhaar QR code and a live face check before you list.",
   },
   ACCOUNT_SUSPENDED: { title: "Your account is suspended", hint: "Contact an administrator to review it." },
   SELF_BIDDING_FORBIDDEN: { title: "You can't bid on your own auction" },
@@ -63,6 +63,9 @@ export const ERROR_COPY: Record<string, Copy> = {
   EMAIL_ALREADY_REGISTERED: { title: "An account with this email already exists" },
   REFRESH_TOKEN_INVALID: { title: "Your session ended", hint: "Log in again to continue." },
   KYC_ALREADY_ACTIVE: { title: "You already have a verification in progress" },
+  KYC_COOLDOWN: { title: "Too many failed face checks", hint: "You can start again after the time shown." },
+  AADHAAR_INVALID: { title: "We couldn't verify that Aadhaar file" },
+  FACE_CAPTURE_INVALID: { title: "The camera capture couldn't be used", hint: "Try the face check again." },
   // Payment codes (contracts/errors/payment-error-codes.yaml)
   ORDER_NOT_PAYABLE: { title: "This order has nothing left to pay" },
   PAYMENT_SIGNATURE_INVALID: { title: "The payment could not be verified", hint: "Nothing was captured. Try paying again." },

@@ -1,24 +1,24 @@
-import { Check, Clock3, FileUp, Search, ShieldAlert, ShieldCheck, X } from "lucide-react";
+import { Check, Clock3, Fingerprint, ScanFace, ShieldAlert, ShieldCheck, X } from "lucide-react";
 import type { KycStatus } from "@/lib/api";
 import { cn } from "@/lib/cn";
 
 /**
- * The KYC state machine as a progress strip (docs/state-machines.md §3):
- * SUBMITTED -> UNDER_REVIEW -> VERIFIED, with REJECTED and SUSPENDED as the off-ramps.
+ * The KYC state machine as a progress strip (docs/state-machines.md §3): the Aadhaar offline
+ * e-KYC, then the live face check (or a manual review when it was close), then verified, with
+ * REJECTED and SUSPENDED as the off-ramps.
  */
 const STEPS = [
-  { id: "SUBMITTED", label: "Submitted", icon: FileUp },
-  { id: "UNDER_REVIEW", label: "Under review", icon: Search },
+  { id: "AADHAAR", label: "Aadhaar e-KYC", icon: Fingerprint },
+  { id: "FACE", label: "Face check", icon: ScanFace },
   { id: "VERIFIED", label: "Verified", icon: ShieldCheck },
 ] as const;
 
 function position(status: KycStatus): number {
   switch (status) {
-    case "NOT_SUBMITTED": return -1;
-    case "SUBMITTED": return 0;
+    case "NOT_SUBMITTED": return 0;
+    case "SUBMITTED": return 1;
     case "UNDER_REVIEW": return 1;
-    case "REJECTED": return 2;
-    default: return 2; // VERIFIED, SUSPENDED
+    default: return 2; // VERIFIED, REJECTED, SUSPENDED
   }
 }
 
@@ -33,7 +33,7 @@ export function KycStatusStrip({ status }: { status: KycStatus }) {
         const done = index < at || (index === at && status === "VERIFIED");
         const current = index === at && !done;
         const Icon = isLast && failed ? (status === "REJECTED" ? X : ShieldAlert) : done ? Check : current ? Clock3 : step.icon;
-        const label = isLast && failed ? (status === "REJECTED" ? "Rejected" : "Suspended") : step.label;
+        const label = isLast && failed ? (status === "REJECTED" ? "Rejected" : "Suspended") : step.id === "FACE" && status === "UNDER_REVIEW" ? "Manual review" : step.label;
         return (
           <li key={step.id} className="flex flex-col gap-2" aria-current={current || (isLast && failed) ? "step" : undefined}>
             <div

@@ -1,4 +1,4 @@
-import type { Auction, DocType, KycStatus, LedgerEntry, Order, Role } from "../api/types";
+import type { AadhaarSummary, Auction, DocType, FaceAttemptRecord, KycStatus, LedgerEntry, Order, Role } from "../api/types";
 import { toMoneyString } from "../money";
 import { policy } from "../policy";
 
@@ -40,6 +40,9 @@ export interface MockDocument {
   data_url: string | null;
 }
 
+/** How the simulated face check answers for this submission (set from the QR file name). */
+export type MockFacePlan = "match" | "review" | "no_match";
+
 export interface MockSubmission {
   id: string;
   user_id: string;
@@ -49,6 +52,9 @@ export interface MockSubmission {
   decided_at: string | null;
   decided_by: string | null;
   documents: MockDocument[];
+  aadhaar: (AadhaarSummary & { pincode: string | null }) | null;
+  attempts: FaceAttemptRecord[];
+  face_plan: MockFacePlan;
 }
 
 /** An order plus the provider order its Checkout pays (mock adapter, ADR-0009). */
@@ -59,7 +65,7 @@ export interface MockOrder extends Order {
 }
 
 export interface MockState {
-  version: 2;
+  version: 4;
   orders: MockOrder[];
   users: MockUser[];
   auctions: Auction[];
@@ -169,7 +175,7 @@ export function seedState(now = Date.now()): MockState {
     user(ids.unverified, "unverified@zeo.local", "Unverified Seller", "USER", "NOT_SUBMITTED", created),
     user(ids.buyer1, "buyer1@zeo.local", "Buyer One", "USER", "NOT_SUBMITTED", created),
     user(ids.buyer2, "buyer2@zeo.local", "Buyer Two", "USER", "NOT_SUBMITTED", created),
-    user(ids.pending, "pending@zeo.local", "Pending Seller", "USER", "SUBMITTED", created),
+    user(ids.pending, "pending@zeo.local", "Pending Seller", "USER", "UNDER_REVIEW", created),
     ...ids.bots.map((id, i) => user(id, `bot${i + 1}@zeo.local`, `Simulated bidder ${i + 1}`, "USER", "NOT_SUBMITTED", created)),
   ];
 
@@ -216,21 +222,46 @@ export function seedState(now = Date.now()): MockState {
     });
   }
 
+  // Synthetic Aadhaar summaries: invented names, never a real person's data.
+  const aadhaar = (name: string, at: number, last4: string) => ({
+    holder_name: name, year_of_birth: 1994, gender: "M" as const, state: "Karnataka", pincode: "560001",
+    reference_last4: last4, qr_generated_at: iso(at - 400 * 24 * 60 * MIN), mobile_verified: true,
+  });
+  const attempt = (outcome: FaceAttemptRecord["outcome"], median: number, at: number): FaceAttemptRecord => ({
+    attempt_no: 1, outcome, frames: 6, good_frames: 6, median_score: median, min_score: median - 0.04, yaw_span: 0.34, at: iso(at),
+  });
+  const image = (docType: DocType, at: number, name: string): MockDocument => ({
+    id: crypto.randomUUID(), doc_type: docType, mime_type: "image/jpeg", size_bytes: docType === "AADHAAR_PHOTO" ? 9_412 : 64_208,
+    uploaded_at: iso(at), sha256: fakeSha(name), name, data_url: null,
+  });
+  const verifiedAt = now - 20 * 24 * 60 * MIN;
+  const referredAt = now - 3 * 60 * MIN;
   const submissions: MockSubmission[] = [
     {
       id: "00000000-0000-4000-8000-000000000102", user_id: ids.seller, state: "VERIFIED", rejection_reason: null,
-      submitted_at: iso(now - 20 * 24 * 60 * MIN), decided_at: iso(now - 19 * 24 * 60 * MIN), decided_by: ids.admin,
-      documents: [],
+      submitted_at: iso(verifiedAt), decided_at: iso(verifiedAt + 2 * MIN), decided_by: null,
+      documents: [image("AADHAAR_PHOTO", verifiedAt, "aadhaar-photo.jpg"), image("FACE_CAPTURE", verifiedAt + 2 * MIN, "face-capture.jpg")],
+      aadhaar: aadhaar("Verified Seller", verifiedAt, "4417"), attempts: [attempt("MATCH", 0.58, verifiedAt + 2 * MIN)], face_plan: "match",
     },
     {
-      id: "00000000-0000-4000-8000-000000000106", user_id: ids.pending, state: "SUBMITTED", rejection_reason: null,
-      submitted_at: iso(now - 3 * 60 * MIN), decided_at: null, decided_by: null,
-      documents: [
-        { id: crypto.randomUUID(), doc_type: "GOVERNMENT_ID", mime_type: "image/png", size_bytes: 482_113, uploaded_at: iso(now - 3 * 60 * MIN), sha256: "9f2c4e1a7b3d8c6e5f0a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e4f5a6", name: "passport.png", data_url: null },
-        { id: crypto.randomUUID(), doc_type: "PROOF_OF_ADDRESS", mime_type: "application/pdf", size_bytes: 1_204_331, uploaded_at: iso(now - 3 * 60 * MIN), sha256: "1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f809", name: "utility-bill.pdf", data_url: null },
-      ],
+      // The face check was borderline, so it waits in the admin queue.
+      id: "00000000-0000-4000-8000-000000000106", user_id: ids.pending, state: "UNDER_REVIEW", rejection_reason: null,
+      submitted_at: iso(referredAt), decided_at: null, decided_by: null,
+      documents: [image("AADHAAR_PHOTO", referredAt, "aadhaar-photo.jpg"), image("FACE_CAPTURE", referredAt + 3 * MIN, "face-capture.jpg")],
+      aadhaar: aadhaar("Pending Seller", referredAt, "9083"), attempts: [attempt("REVIEW", 0.36, referredAt + 3 * MIN)], face_plan: "review",
     },
   ];
 
-  return { version: 2, users, auctions, bids, orders: [], submissions, refresh: {}, idempotency: {} };
+  return { version: 4, users, auctions, bids, orders: [], submissions, refresh: {}, idempotency: {} };
+}
+
+/** A stable 64-hex stand-in for a seeded image's SHA-256. */
+function fakeSha(seed: string): string {
+  let out = "";
+  let hash = 0x811c9dc5;
+  while (out.length < 64) {
+    for (const char of seed + out.length) hash = Math.imul(hash ^ char.charCodeAt(0), 0x01000193) >>> 0;
+    out += hash.toString(16).padStart(8, "0");
+  }
+  return out.slice(0, 64);
 }

@@ -5,7 +5,8 @@ export type KycStatus =
   | "NOT_SUBMITTED" | "SUBMITTED" | "UNDER_REVIEW" | "VERIFIED" | "REJECTED" | "SUSPENDED";
 export type AuctionState =
   | "DRAFT" | "SCHEDULED" | "OPEN" | "EXTENDED" | "CLOSING" | "CLOSED" | "SETTLED" | "CANCELLED";
-export type DocType = "GOVERNMENT_ID" | "PROOF_OF_ADDRESS" | "SELFIE";
+/** Images a KYC submission keeps (services/kyc): the Aadhaar photo and the live capture. */
+export type DocType = "AADHAAR_PHOTO" | "FACE_CAPTURE";
 
 export interface Profile {
   user_id: string;
@@ -98,18 +99,66 @@ export interface KycDocument {
   uploaded_at: string;
 }
 
+/** What the verified Aadhaar Secure QR said; the QR itself is never kept. */
+export interface AadhaarSummary {
+  holder_name: string;
+  year_of_birth: number;
+  gender: "M" | "F" | "T";
+  state: string | null;
+  reference_last4: string;
+  qr_generated_at: string;
+  mobile_verified: boolean | null;
+}
+
+export type FaceOutcome = "MATCH" | "REVIEW" | "NO_MATCH" | "LIVENESS_FAILED" | "NO_FACE";
+
+export interface FaceStatus {
+  attempts_used: number;
+  attempts_left: number;
+  last_outcome: FaceOutcome | null;
+}
+
 export interface KycSubmission {
   submission_id: string;
   state: KycStatus;
   rejection_reason: string | null;
   submitted_at: string;
   decided_at: string | null;
+  /** A new Aadhaar upload is accepted now (it replaces a submission still waiting for the face). */
   can_resubmit: boolean;
+  /** Set after the face check rejected the submission: no new upload before this time. */
+  resubmit_after: string | null;
+  aadhaar: AadhaarSummary | null;
+  face: FaceStatus;
   documents: KycDocument[];
+}
+
+export interface FaceCheckResult {
+  outcome: FaceOutcome;
+  attempts_left: number;
+  submission: KycSubmission;
 }
 
 export interface AdminKycDocument extends KycDocument {
   sha256: string;
+}
+
+export interface AdminAadhaar extends AadhaarSummary {
+  pincode: string | null;
+  signer_sha256: string;
+  face_model: string;
+  reference_faces: number;
+}
+
+export interface FaceAttemptRecord {
+  attempt_no: number;
+  outcome: FaceOutcome;
+  frames: number;
+  good_frames: number;
+  median_score: number | null;
+  min_score: number | null;
+  yaw_span: number | null;
+  at: string;
 }
 
 export interface AdminSubmission {
@@ -120,6 +169,8 @@ export interface AdminSubmission {
   submitted_at: string;
   decided_at: string | null;
   decided_by: string | null;
+  aadhaar: AdminAadhaar | null;
+  face_attempts: FaceAttemptRecord[];
   documents: AdminKycDocument[];
 }
 
@@ -147,8 +198,6 @@ export interface ErrorEnvelope {
   details: Record<string, unknown> | null;
   request_id?: string | null;
 }
-
-export type KycFiles = Partial<Record<DocType, File>>;
 
 /** Order states, docs/state-machines.md section 2 (contracts/openapi/payment.v1.yaml). */
 export type OrderState =

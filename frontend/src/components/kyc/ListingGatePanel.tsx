@@ -3,10 +3,10 @@ import type { KycStatus } from "@/lib/api";
 import { ButtonLink } from "@/components/ui";
 
 const REASON: Record<Exclude<KycStatus, "VERIFIED">, string> = {
-  NOT_SUBMITTED: "You haven't submitted identity documents yet.",
-  SUBMITTED: "Your documents are waiting for an administrator to pick them up.",
-  UNDER_REVIEW: "An administrator is reviewing your documents right now.",
-  REJECTED: "Your last submission was rejected. Fix the issue below and submit again.",
+  NOT_SUBMITTED: "You haven't verified your identity yet: your Aadhaar QR code plus a live face check.",
+  SUBMITTED: "Your Aadhaar is verified. Finish the live face check to start listing.",
+  UNDER_REVIEW: "Your face check was close, so an administrator is comparing the photos.",
+  REJECTED: "Your last verification didn't go through. See why below and try again.",
   SUSPENDED: "Your seller verification has been suspended by an administrator.",
 };
 
@@ -24,9 +24,9 @@ export function ListingGatePanel({ status, showAction = true }: { status: KycSta
         <code className="rounded-md bg-danger-soft px-1.5 py-0.5 font-mono text-xs font-semibold text-danger">SELLER_NOT_VERIFIED</code>{" "}
         <span className="text-ink-faint">(HTTP 403, kyc_status: {status})</span>.
       </p>
-      {showAction && (status === "NOT_SUBMITTED" || status === "REJECTED") && (
+      {showAction && (status === "NOT_SUBMITTED" || status === "SUBMITTED" || status === "REJECTED") && (
         <ButtonLink to="/sell/verify" className="mt-4" iconRight={<ArrowRight className="size-4" />}>
-          {status === "REJECTED" ? "Resubmit documents" : "Start verification"}
+          {status === "REJECTED" ? "Try again" : status === "SUBMITTED" ? "Finish the face check" : "Start verification"}
         </ButtonLink>
       )}
     </div>
