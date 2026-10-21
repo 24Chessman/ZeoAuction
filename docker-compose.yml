@@ -1,6 +1,4 @@
-# ZeoAuction local stack (owner: Ayush, #88).
-# One file reproduces the whole system locally and in CI (NFR-MAINT-4):
-#   docker compose up -d --build     (or: make up)
+# ZeoAuction local stack
 #
 # Host ports: services 8001-8012 (http://localhost:<port>/healthz), PostgreSQL 5432,
 # Redis 6379, Kafka 29092, S3 API 8333.
@@ -104,8 +102,7 @@ services:
     entrypoint: ["sh", "/opt/zeo/create-topics.sh", "kafka:9092"]
     restart: "no"
 
-  # S3-compatible object storage. SeaweedFS replaces MinIO, whose images are no longer
-  # published. Private buckets, SSE-S3 encryption at rest, signed-URL access only.
+  # S3-compatible object storage
   s3:
     image: chrislusf/seaweedfs:4.48
     restart: unless-stopped
@@ -158,6 +155,15 @@ services:
       # Signed URLs are opened by the browser, so they point at the host-mapped port.
       S3_PUBLIC_ENDPOINT_URL: http://localhost:8333
       KYC_SIGNED_URL_TTL_SECONDS: "60"
+      # The Aadhaar Secure QR is verified against UIDAI's certificate (bundled). For demos with
+      # synthetic QRs (services/kyc/scripts/synthetic_qr.py) set, in the root .env:
+      #   KYC_EXTRA_TRUSTED_CERTS=/srv/dev-certs/dev-secure-qr.cer
+      KYC_EXTRA_TRUSTED_CERTS: ${KYC_EXTRA_TRUSTED_CERTS:-}
+      # 0 = no age limit (a card's QR dates from when it was printed); e.g. 72 to demand a
+      # freshly downloaded e-Aadhaar.
+      KYC_AADHAAR_MAX_AGE_HOURS: "0"
+    volumes:
+      - ./services/kyc/dev-certs:/srv/dev-certs:ro
 
   auction-orchestrator:
     <<: *service-common

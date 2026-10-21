@@ -7,8 +7,11 @@ from fastapi import FastAPI
 
 from app import admin_api, api
 from app.adapters.document_store import DocumentStore
+from app.adapters.face_engine import FaceEngine, OpenCvFaceEngine
 from app.adapters.kyc_repo import InMemoryKycRepository, KycRepository, PostgresKycRepository
+from app.adapters.qr_reader import QrReader, ZxingQrReader
 from app.adapters.user_mirror import TokenRefreshAnnouncer
+from app.domain.aadhaar import TrustedKey, load_trusted_key
 from app.service import KycService
 from app.settings import Settings
 from zeo_common import create_app
@@ -18,7 +21,7 @@ from zeo_common.gateway import RedisTokenVersions, TokenVersionPublisher
 from zeo_common.redis import create_redis, redis_check
 from zeo_common.storage import InMemoryObjectStore, ObjectStore, S3ObjectStore, StorageSettings
 
-VERSION = "0.3.0"
+VERSION = "0.5.0"
 BUCKET = "kyc-documents"
 
 
@@ -29,6 +32,9 @@ def build_app(
     store: ObjectStore | None = None,
     token_versions: TokenVersionPublisher | None = None,
     jwt_settings: JwtSettings | None = None,
+    face_engine: FaceEngine | None = None,
+    qr_reader: QrReader | None = None,
+    trusted_keys: list[TrustedKey] | None = None,
 ) -> FastAPI:
     """Create the service. Tests pass the adapters; otherwise they are built at start-up."""
     settings = settings or Settings.from_env()
@@ -36,14 +42,24 @@ def build_app(
         service_name="kyc", version=VERSION, description="ZeoAuction KYC & Seller Verification."
     )
     install_auth(app, jwt_settings)
+    # Fail at start-up, not on the first seller, if a certificate or a model is missing.
+    keys = trusted_keys if trusted_keys is not None else [
+        load_trusted_key(path.read_bytes()) for path in settings.trusted_certificates
+    ]
 
     def attach(repo: KycRepository, objects: ObjectStore,
                publisher: TokenVersionPublisher | None) -> None:
+        engine = face_engine or OpenCvFaceEngine(settings.face_models_dir)
         app.state.kyc_service = KycService(
             repo,
             DocumentStore(objects, settings.signed_url_ttl_seconds),
             TokenRefreshAnnouncer(publisher),
-            max_document_bytes=settings.max_document_bytes,
+            engine,
+            qr_reader or ZxingQrReader(),
+            trusted_keys=keys,
+            aadhaar_max_age=settings.aadhaar_max_age,
+            face_policy=settings.face_policy,
+            max_frame_bytes=settings.max_frame_bytes,
             retention_days=settings.retention_days,
         )
 

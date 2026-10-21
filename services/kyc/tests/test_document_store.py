@@ -7,13 +7,13 @@ import pytest
 
 from app.adapters.document_store import DocumentStore
 from app.domain.submission import (
+    ImageInvalid,
     Submission,
     new_document,
     object_key,
-    require_documents,
-    validate_upload,
+    validate_image,
 )
-from tests.support import PDF, PNG
+from tests.support import JPEG, PNG
 from zeo_common.storage import InMemoryObjectStore, StorageError
 
 NOW = datetime(2026, 9, 10, tzinfo=UTC)
@@ -21,8 +21,8 @@ SUBMISSION = Submission(id=uuid4(), user_id=uuid4(), state="SUBMITTED", rejectio
                         submitted_at=NOW, decided_at=None, decided_by=None, updated_at=NOW)
 
 
-def document(data=PDF, doc_type="GOVERNMENT_ID"):
-    upload = validate_upload(doc_type, data, "application/pdf" if data == PDF else None)
+def document(data=JPEG, doc_type="AADHAAR_PHOTO"):
+    upload = validate_image(doc_type, data)
     return new_document(upload, doc_id=uuid4(), submission=SUBMISSION, now=NOW,
                         retention_days=90), upload
 
@@ -33,8 +33,7 @@ async def test_save_stores_bytes_under_the_object_key_and_never_logs_them(caplog
     doc, upload = document()
     with caplog.at_level(logging.DEBUG):
         await documents.save(doc, upload)
-    assert store.objects[doc.object_key] == (PDF, "application/pdf")
-    assert "%PDF" not in caplog.text
+    assert store.objects[doc.object_key] == (JPEG, "image/jpeg")
     assert doc.object_key not in caplog.text
 
 
@@ -66,15 +65,22 @@ async def test_discard_is_best_effort():
 
 
 def test_retention_and_keys():
-    doc, _ = document()
+    doc, _ = document(PNG, "FACE_CAPTURE")
     assert doc.purge_after == NOW + timedelta(days=90)
-    assert doc.object_key == object_key(SUBMISSION.user_id, SUBMISSION.id, "GOVERNMENT_ID",
-                                        doc.id, "pdf")
+    assert doc.object_key == object_key(SUBMISSION.user_id, SUBMISSION.id, "FACE_CAPTURE",
+                                        doc.id, "png")
 
 
-def test_duplicate_types_are_refused():
-    upload = validate_upload("GOVERNMENT_ID", PDF, None)
-    proof = validate_upload("PROOF_OF_ADDRESS", PNG, "image/png; charset=binary")
-    require_documents([upload, proof])
+@pytest.mark.parametrize(
+    ("data", "reason"),
+    [(b"", "empty"), (b"%PDF-1.7", "unsupported_format"), (JPEG + b"x" * 5000, "too_large")],
+)
+def test_images_are_sniffed_and_bounded(data, reason):
+    with pytest.raises(ImageInvalid) as caught:
+        validate_image("FACE_CAPTURE", data, max_bytes=4096)
+    assert caught.value.reason == reason
+
+
+def test_unknown_document_types_are_a_programming_error():
     with pytest.raises(ValueError):
-        require_documents([upload, upload, proof])
+        validate_image("GOVERNMENT_ID", JPEG)

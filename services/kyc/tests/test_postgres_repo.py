@@ -10,18 +10,19 @@ from uuid import uuid4
 
 import pytest
 
-from app.adapters.kyc_repo import (
-    ActiveSubmissionExists,
-    DocumentTypeExists,
-    PostgresKycRepository,
-    StaleSubmission,
-)
+from app.adapters.kyc_repo import ActiveSubmissionExists, PostgresKycRepository, StaleSubmission
 from app.adapters.user_mirror import UnknownUser
-from app.domain.submission import Submission, new_document, validate_upload
+from app.domain.aadhaar import AadhaarSummary
+from app.domain.face import FaceAttempt
+from app.domain.submission import Submission, new_document, validate_image
 from app.domain.verification import plan_transition, submit_transition
-from tests.support import PDF
+from tests.support import JPEG
 
 NOW = datetime(2026, 9, 10, tzinfo=UTC)
+MIRROR = ("UPDATE auth.users SET kyc_status = $1, kyc_status_updated_at = $2, token_version = "
+          "token_version + 1 WHERE id = $3 RETURNING token_version")
+UPDATE_STATE = ("UPDATE kyc_submissions SET state = $1, rejection_reason = $2, decided_at = $3, "
+                "decided_by = $4 WHERE id = $5 AND state = $6")
 
 
 class FakeConnection:
@@ -82,28 +83,43 @@ def submission(state="SUBMITTED") -> Submission:
                       submitted_at=NOW, decided_at=None, decided_by=None, updated_at=NOW)
 
 
-def document_for(row: Submission):
-    return new_document(validate_upload("GOVERNMENT_ID", PDF, None), doc_id=uuid4(),
-                        submission=row, now=NOW, retention_days=30)
+def document_for(row: Submission, doc_type="AADHAAR_PHOTO"):
+    return new_document(validate_image(doc_type, JPEG), doc_id=uuid4(), submission=row,
+                        now=NOW, retention_days=30)
 
 
-async def test_create_writes_row_documents_transition_and_mirror_in_one_transaction():
+def summary_for(row: Submission, embedding=(0.6, 0.8)) -> AadhaarSummary:
+    return AadhaarSummary(
+        submission_id=row.id, reference_last4="3632", qr_generated_at=NOW,
+        signer_sha256="ab" * 32, holder_name="Asha Verma", year_of_birth=1998, gender="F",
+        state="Maharashtra", pincode="411001", mobile_verified=None, face_model="m",
+        reference_faces=1 if embedding else 0, reference_embedding=embedding, verified_at=NOW,
+    )
+
+
+def attempt_for(row: Submission, outcome="MATCH", n=1) -> FaceAttempt:
+    return FaceAttempt(submission_id=row.id, attempt_no=n, frames=3, good_frames=3,
+                       median_score=0.5, min_score=0.45, yaw_span=0.3, outcome=outcome, at=NOW)
+
+
+async def test_create_writes_row_photo_summary_transition_and_mirror_in_one_transaction():
     pool = FakePool()
     pool.values = [2]
     row = submission()
     version = await PostgresKycRepository(pool).create(
-        row, [document_for(row)], submit_transition(row, NOW, None)
+        row, [document_for(row)], submit_transition(row, NOW, None), summary_for(row)
     )
     assert version == 2
     assert pool.statements() == [
         "BEGIN",
         "INSERT INTO kyc_submissions",
         "INSERT INTO kyc_documents",
+        "INSERT INTO aadhaar_verifications",
         "INSERT INTO kyc_state_transitions",
-        "UPDATE auth.users SET kyc_status = $1, kyc_status_updated_at = $2, token_version = "
-        "token_version + 1 WHERE id = $3 RETURNING token_version",
+        MIRROR,
         "COMMIT",
     ]
+    assert pool.log[3][1][12] == [0.6, 0.8]  # real[] goes to asyncpg as a list
 
 
 async def test_create_maps_the_one_live_submission_index_to_a_domain_error():
@@ -114,7 +130,8 @@ async def test_create_maps_the_one_live_submission_index_to_a_domain_error():
     pool.error = asyncpg.UniqueViolationError("kyc_submissions_one_live_per_user")
     row = submission()
     with pytest.raises(ActiveSubmissionExists):
-        await PostgresKycRepository(pool).create(row, [], submit_transition(row, NOW, None))
+        await PostgresKycRepository(pool).create(row, [], submit_transition(row, NOW, None),
+                                                 summary_for(row))
     assert pool.log[-1] == ("ROLLBACK",)
 
 
@@ -122,8 +139,62 @@ async def test_create_rolls_back_when_the_user_is_unknown():
     pool = FakePool()
     row = submission()
     with pytest.raises(UnknownUser):
-        await PostgresKycRepository(pool).create(row, [], submit_transition(row, NOW, None))
+        await PostgresKycRepository(pool).create(row, [], submit_transition(row, NOW, None),
+                                                 summary_for(row, None))
     assert pool.log[-1] == ("ROLLBACK",)
+
+
+async def test_a_deciding_face_attempt_is_one_transaction_with_its_transition():
+    pool = FakePool()
+    pool.status = {"UPDATE": "UPDATE 1"}
+    pool.values = [3]
+    row = submission()
+    change = plan_transition(row, "faceMatch", actor_id=row.user_id, reason=None, now=NOW)
+    version = await PostgresKycRepository(pool).record_face_attempt(
+        attempt_for(row), [document_for(row, "FACE_CAPTURE")], change
+    )
+    assert version == 3
+    assert pool.statements() == [
+        "BEGIN",
+        "INSERT INTO face_match_attempts",
+        "INSERT INTO kyc_documents",
+        UPDATE_STATE,
+        "INSERT INTO kyc_state_transitions",
+        MIRROR,
+        "COMMIT",
+    ]
+
+
+async def test_a_non_deciding_attempt_only_appends_the_attempt():
+    pool = FakePool()
+    row = submission()
+    assert await PostgresKycRepository(pool).record_face_attempt(
+        attempt_for(row, "NO_FACE"), [], None
+    ) is None
+    assert pool.statements() == ["BEGIN", "INSERT INTO face_match_attempts", "COMMIT"]
+
+
+async def test_a_concurrent_attempt_number_is_a_stale_submission():
+    import asyncpg
+
+    pool = FakePool()
+    pool.raise_on = "INSERT INTO face_match_attempts"
+    pool.error = asyncpg.UniqueViolationError("face_match_attempts_submission_id_attempt_no_key")
+    with pytest.raises(StaleSubmission):
+        await PostgresKycRepository(pool).record_face_attempt(attempt_for(submission()), [], None)
+    assert pool.log[-1] == ("ROLLBACK",)
+
+
+async def test_a_face_decision_on_a_moved_row_rolls_back_the_attempt_too():
+    pool = FakePool()
+    pool.status = {"UPDATE": "UPDATE 0"}
+    row = submission()
+    change = plan_transition(row, "faceFail", actor_id=row.user_id, reason=None, now=NOW)
+    with pytest.raises(StaleSubmission):
+        await PostgresKycRepository(pool).record_face_attempt(
+            attempt_for(row, "NO_MATCH", 3), [], change
+        )
+    assert pool.statements()[-1] == "ROLLBACK"
 
 
 async def test_admin_transition_updates_with_a_state_check_and_audits():
@@ -146,10 +217,10 @@ async def test_a_lost_race_rolls_back_without_writing_anything_else():
     pool = FakePool()
     pool.status = {"UPDATE": "UPDATE 0"}
     row = submission()
-    transition, updated = plan_transition(row, "startReview", actor_id=uuid4(), reason=None,
+    transition, updated = plan_transition(row, "withdraw", actor_id=row.user_id, reason=None,
                                           now=NOW)
     with pytest.raises(StaleSubmission):
-        await PostgresKycRepository(pool).apply(transition, updated, "ADMIN", None)
+        await PostgresKycRepository(pool).apply(transition, updated, "USER", None)
     assert pool.statements()[-1] == "ROLLBACK"
     assert "INSERT INTO kyc_state_transitions" not in pool.statements()
 
@@ -162,21 +233,25 @@ async def test_reads():
     assert await repo.latest_for_user(row.user_id) == row
     assert await repo.get(row.id) is None
     pool.rows = [dict(row.__dict__)]
-    assert await repo.queue(("SUBMITTED",), 10, 0) == [row]
+    assert await repo.queue(("UNDER_REVIEW",), 10, 0) == [row]
     doc = document_for(row)
     pool.rows = [dict(doc.__dict__)]
     assert await repo.documents(row.id) == [doc]
+    attempt = attempt_for(row)
+    pool.rows = [dict(attempt.__dict__)]
+    assert await repo.face_attempts(row.id) == [attempt]
 
 
-async def test_add_document_refuses_a_duplicate_type():
+async def test_aadhaar_rows_come_back_with_a_tuple_template():
     pool = FakePool()
     row = submission()
+    summary = summary_for(row)
+    pool.rows = [dict(summary.__dict__, reference_embedding=[0.6, 0.8]),
+                 dict(summary_for(row, None).__dict__)]
     repo = PostgresKycRepository(pool)
-    await repo.add_document(document_for(row))
-    assert pool.statements()[-2] == "INSERT INTO kyc_documents"
-    pool.values = [1]
-    with pytest.raises(DocumentTypeExists):
-        await repo.add_document(document_for(row))
+    assert await repo.aadhaar(row.id) == summary
+    assert (await repo.aadhaar(row.id)).reference_embedding is None
+    assert await repo.aadhaar(row.id) is None
 
 
 async def test_document_views_are_audited():

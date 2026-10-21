@@ -1,5 +1,9 @@
 # KYC service — endpoint and verification-flow design
 
+> **Superseded 2026-10-20** by Aadhaar offline e-KYC and a live face match ([ADR-0013](../../../docs/adr/0013-aadhaar-offline-ekyc-and-face-match.md),
+> [README](../README.md)). Kept as the Plan 3 record: document upload, the `start-review` route and the document
+> types below no longer exist. Token freshness (section 5) and the transaction rules still apply.
+
 | | |
 |---|---|
 | **Owner** | Sagar |

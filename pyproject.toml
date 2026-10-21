@@ -16,7 +16,7 @@ ignore = []
 "services/fraud-detector/dataset/**" = ["S311"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["zeo_common", "app", "tests", "dataset"]
+known-first-party = ["zeo_common", "app", "tests", "dataset", "scripts"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests/contracts"]

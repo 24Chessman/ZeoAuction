@@ -1,9 +1,12 @@
-"""Seller-facing KYC routes (#38; SDD 7.2; services/kyc/docs/design.md section 3).
+"""Seller-facing KYC routes (services/kyc/README.md).
 
-``POST /kyc/submissions`` takes the required documents in the same multipart request, so a
-submission never exists without them (guard K1). It is also how a rejected seller resubmits
-(K5): a new submission row, the rejected one stays for audit. Responses carry document
-metadata only, never a URL; sellers do not read documents back.
+1. ``POST /kyc/aadhaar``: a photo of the Aadhaar Secure QR (and, optionally, the mobile
+   number to check against what UIDAI put in it). A verified QR creates the submission (K1,
+   or K5 after a rejection).
+2. ``POST /kyc/submissions/{id}/face``: 3-8 live camera frames. The match decides the
+   submission on the spot, or hands it to an administrator.
+
+Responses carry the holder's name and metadata only, never a URL, never the QR payload.
 """
 
 from datetime import datetime
@@ -13,8 +16,10 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from pydantic import BaseModel
 
-from app.domain.submission import Document, Submission
-from app.service import KycService, Upload
+from app.domain.aadhaar import MAX_IMAGE_BYTES, AadhaarSummary
+from app.domain.face import FaceAttempt
+from app.domain.submission import Document
+from app.service import KycService, SubmissionState
 from zeo_common.auth import CurrentPrincipal
 
 router = APIRouter(prefix="/api/v1", tags=["kyc"])
@@ -35,6 +40,22 @@ class DocumentView(BaseModel):
     uploaded_at: datetime
 
 
+class AadhaarView(BaseModel):
+    holder_name: str
+    year_of_birth: int
+    gender: str
+    state: str | None
+    reference_last4: str
+    qr_generated_at: datetime
+    mobile_verified: bool | None
+
+
+class FaceStatusView(BaseModel):
+    attempts_used: int
+    attempts_left: int
+    last_outcome: str | None
+
+
 class SubmissionView(BaseModel):
     submission_id: UUID
     state: str
@@ -42,7 +63,16 @@ class SubmissionView(BaseModel):
     submitted_at: datetime
     decided_at: datetime | None
     can_resubmit: bool
+    resubmit_after: datetime | None
+    aadhaar: AadhaarView | None
+    face: FaceStatusView
     documents: list[DocumentView]
+
+
+class FaceCheckView(BaseModel):
+    outcome: str
+    attempts_left: int
+    submission: SubmissionView
 
 
 def document_view(document: Document) -> DocumentView:
@@ -52,55 +82,66 @@ def document_view(document: Document) -> DocumentView:
     )
 
 
-def submission_view(submission: Submission, documents: list[Document]) -> SubmissionView:
+def aadhaar_view(summary: AadhaarSummary) -> AadhaarView:
+    return AadhaarView(
+        holder_name=summary.holder_name, year_of_birth=summary.year_of_birth,
+        gender=summary.gender, state=summary.state, reference_last4=summary.reference_last4,
+        qr_generated_at=summary.qr_generated_at, mobile_verified=summary.mobile_verified,
+    )
+
+
+def face_status(attempts: list[FaceAttempt], left: int) -> FaceStatusView:
+    return FaceStatusView(
+        attempts_used=len(attempts), attempts_left=left,
+        last_outcome=attempts[-1].outcome if attempts else None,
+    )
+
+
+def submission_view(state: SubmissionState) -> SubmissionView:
+    submission = state.submission
     return SubmissionView(
         submission_id=submission.id,
         state=submission.state,
         rejection_reason=submission.rejection_reason,
         submitted_at=submission.submitted_at,
         decided_at=submission.decided_at,
-        can_resubmit=submission.state == "REJECTED",
-        documents=[document_view(d) for d in documents],
+        can_resubmit=state.can_resubmit,
+        resubmit_after=state.resubmit_after,
+        aadhaar=None if state.aadhaar is None else aadhaar_view(state.aadhaar),
+        face=face_status(state.attempts, state.attempts_left),
+        documents=[document_view(d) for d in state.documents],
     )
 
 
-async def read_upload(doc_type: str, file: UploadFile, max_bytes: int) -> Upload:
-    # Read one byte past the limit so an oversized file is refused without buffering it all.
-    data = await file.read(max_bytes + 1)
-    return Upload(doc_type=doc_type, data=data, content_type=file.content_type)
-
-
-@router.post("/kyc/submissions", status_code=201, response_model=SubmissionView)
-async def submit(
+@router.post("/kyc/aadhaar", status_code=201, response_model=SubmissionView)
+async def submit_aadhaar(
     principal: CurrentPrincipal,
     service: Service,
-    government_id: Annotated[UploadFile, File()],
-    proof_of_address: Annotated[UploadFile, File()],
-    selfie: Annotated[UploadFile | None, File()] = None,
+    qr_image: Annotated[UploadFile, File(
+        description="A JPEG, PNG or WebP photo of the Aadhaar Secure QR code")],
+    mobile: Annotated[str | None, Form(max_length=20)] = None,
 ) -> SubmissionView:
-    files = {"GOVERNMENT_ID": government_id, "PROOF_OF_ADDRESS": proof_of_address,
-             "SELFIE": selfie}
-    uploads = [
-        await read_upload(doc_type, file, service.max_document_bytes)
-        for doc_type, file in files.items()
-        if file is not None
-    ]
-    return submission_view(*await service.submit(principal, uploads))
+    # Read one byte past the limit so an oversized file is refused without buffering it all.
+    data = await qr_image.read(MAX_IMAGE_BYTES + 1)
+    return submission_view(await service.submit_aadhaar(principal, data, mobile))
 
 
-@router.post("/kyc/submissions/{submission_id}/documents", status_code=201,
-             response_model=DocumentView)
-async def add_document(
+@router.post("/kyc/submissions/{submission_id}/face", response_model=FaceCheckView)
+async def face_check(
     submission_id: UUID,
     principal: CurrentPrincipal,
     service: Service,
-    doc_type: Annotated[str, Form()],
-    file: Annotated[UploadFile, File()],
-) -> DocumentView:
-    upload = await read_upload(doc_type, file, service.max_document_bytes)
-    return document_view(await service.add_document(principal, submission_id, upload))
+    frames: Annotated[list[UploadFile], File(description="3-8 JPEG or PNG camera frames")],
+) -> FaceCheckView:
+    limit = service.max_frame_bytes + 1
+    data = [await frame.read(limit) for frame in frames[: service.policy.max_frames + 1]]
+    result = await service.face_check(principal, submission_id, data)
+    return FaceCheckView(
+        outcome=result.outcome, attempts_left=result.state.attempts_left,
+        submission=submission_view(result.state),
+    )
 
 
 @router.get("/kyc/submissions/me", response_model=SubmissionView)
 async def my_submission(principal: CurrentPrincipal, service: Service) -> SubmissionView:
-    return submission_view(*await service.mine(principal))
+    return submission_view(await service.mine(principal))
