@@ -8,7 +8,9 @@ the payment in Checkout, so the forward path is
 A capture that fails transiently (provider outage, breaker open) parks the order in
 AWAITING_CAPTURE_RETRY, from which the retrier captures again with the **same** idempotency key;
 settlement is deferred, never abandoned. A definitive failure compensates S1 (O4): the order is
-CANCELLED and its invoice voided, so no partial settlement remains.
+CANCELLED and its invoice voided, so no partial settlement remains. If S3 fails definitively
+after the money was captured, S2 is compensated too (O4a): the capture is fully reversed and
+the order CANCELLED (``app/domain/saga.py``).
 
 An event missing from :data:`TRANSITIONS` for the current state raises
 :class:`IllegalOrderTransition` and nothing changes (state-machine rule 1). Every function
@@ -41,6 +43,7 @@ TRANSITIONS: dict[tuple[str, str], str] = {
     ("compensateS1", "INVOICED"): "CANCELLED",                          # O4
     ("compensateS1", "AUTHORIZED"): "CANCELLED",                        # O4
     ("compensateS1", "AWAITING_CAPTURE_RETRY"): "CANCELLED",            # O4
+    ("compensateS2", "CAPTURED"): "CANCELLED",                          # O4a (#63)
     ("hold", "CAPTURED"): "IN_ESCROW",                                  # O5 (S3, S4)
 }
 
@@ -187,3 +190,8 @@ def hold(order: Order, now: datetime) -> Order:
 
 def cancel(order: Order, now: datetime) -> Order:
     return _move(order, "compensateS1", now, next_capture_at=None)
+
+
+def cancel_after_capture(order: Order, now: datetime) -> Order:
+    """O4a: the capture was reversed at the provider; the order ends CANCELLED."""
+    return _move(order, "compensateS2", now)

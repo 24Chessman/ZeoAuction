@@ -78,6 +78,7 @@ stateDiagram-v2
     INVOICED --> CANCELLED: compensate S1
     AUTHORIZED --> CANCELLED: compensate S1
     AWAITING_CAPTURE_RETRY --> CANCELLED: compensate S1
+    CAPTURED --> CANCELLED: compensate S2
     CAPTURED --> IN_ESCROW: hold
     IN_ESCROW --> SHIPPED: markShipped
     SHIPPED --> DISPUTED: raiseDispute
@@ -97,6 +98,7 @@ stateDiagram-v2
 | O2 | `capture` | AUTHORIZED, AWAITING_CAPTURE_RETRY | CAPTURED | Manual capture through `PaymentPort` succeeds; key `order:{id}:capture` | `CAPTURE +captured_total` (S2) |
 | O3 | `captureFailed` | AUTHORIZED, AWAITING_CAPTURE_RETRY | AWAITING_CAPTURE_RETRY | Payment breaker open (3 failures / 30 s) or a transient provider error | None; retried by the settlement worker with backoff and the **same** idempotency key, for as long as it takes |
 | O4 | `compensateS1` | INVOICED, AUTHORIZED, AWAITING_CAPTURE_RETRY | CANCELLED | Capture definitively failed (declined or refused), **or** the winner did not pay by `payment_due_at` | Invoice `voided_at` set; `COMPENSATED` published. Nothing was captured, so the ledger is untouched, and an uncaptured authorisation lapses back to the buyer. **No partial settlement remains** |
+| O4a | `compensateS2` | CAPTURED | CANCELLED | S3 failed **definitively** after the capture (a transient failure leaves the order CAPTURED, and the settlement worker resumes S3 after 2 min) (#63) | The capture is fully reversed at the provider with key `order:{id}:reverse-capture`; `COMPENSATION` rows equal and opposite to every custody row bring the balance to zero; invoice voided; `COMPENSATED` published; `payment_saga_compensations{step="S2"}` and an error log are the operational alert. If the provider can't reverse yet, the order stays CAPTURED and the next pass retries with the same key. If it refuses, the order stays CAPTURED for an operator |
 | O5 | `hold` | CAPTURED | IN_ESCROW | – | `HOLD 0` and `FEE_RETAIN −fee` (S3, S4) |
 | O6 | `markShipped` | IN_ESCROW | SHIPPED | Caller is the seller | `shipped_at = now`, `protection_window_ends_at = now + 7 days`: **the protection window opens** |
 | O7 | `raiseDispute` | SHIPPED | DISPUTED | Caller is the buyer; `now < protection_window_ends_at`; no open dispute | Escrow **frozen**. Refused with `WINDOW_CLOSED` (409) once the window has passed (AC-11) |
@@ -105,6 +107,13 @@ stateDiagram-v2
 | O10 | `sweepExpiry` | SHIPPED | RELEASED | `protection_window_ends_at ≤ now`; no open dispute | Release trigger (b), via the escrow-sweep cron **within 5 minutes** of expiry (AC-12) |
 | O11 | `adjudicateSeller` | DISPUTED | RELEASED | Admin resolves `RELEASE_TO_SELLER` | Release trigger (c): `RELEASE −(captured_total − fee)` |
 | O12 | `adjudicateBuyer` | DISPUTED | REFUNDED | Admin resolves `REFUND_BUYER` with a fault | See the fee table below; provider reversal of the capture |
+
+**Saga log (#63):** every forward step and compensation is upserted into `payment.saga_steps` (S1 invoice, S2 capture,
+S3 hold rows, S4 IN_ESCROW) in the same transaction as the order change, with status DONE, FAILED or COMPENSATED.
+S3 and S4 commit together, so neither can exist without the other. Failure injection at every step is tested in
+`services/payment-escrow/tests/test_saga_failure_injection.py`. SDD Table 5.2 reverts a failed S4 to INVOICED, but
+under ADR-0009 the buyer pays in Checkout, so INVOICED would ask them to pay a second time. The capture is
+reversed and the order cancelled instead.
 
 **Guard shared by every release (R1):** no dispute in `OPEN` or `UNDER_REVIEW` exists for the order. If this guard fails, the release aborts and the funds stay held.
 The database's partial unique index guarantees at most one `RELEASE`/`REFUND` row per order.

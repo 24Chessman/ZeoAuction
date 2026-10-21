@@ -11,6 +11,8 @@ commit together or not at all.
 * The ledger is only ever INSERTed into (no UPDATE/DELETE grant, and a trigger). Rows are
   checked by :func:`app.domain.ledger.check_append` before they are written.
 * Provider webhooks are recorded once per ``(provider, event_id)`` (FR-PAY-7).
+* Saga progress (``saga_steps``, #63) is upserted in the same transaction as the order change
+  it records, so the log can never disagree with the order.
 """
 
 from collections.abc import Sequence
@@ -23,6 +25,7 @@ from app.domain.fees import ACTIVE_FEE, FeeConfig
 from app.domain.invoice import Invoice
 from app.domain.ledger import EntryType, LedgerEntry, check_append
 from app.domain.orders import Order
+from app.domain.saga import SagaStepRecord, Step, StepStatus
 from app.payment_port.port import ProviderEvent
 
 _ORDER_COLUMNS = (
@@ -51,6 +54,16 @@ _INSERT_LEDGER = (
 )
 
 
+_UPSERT_STEP = (
+    "INSERT INTO saga_steps (saga_id, step, order_id, status, idempotency_key, attempts, "
+    "last_error, updated_at) VALUES ($1, $2, $3, $4, $5, 1, $6, $7) "
+    "ON CONFLICT (saga_id, step) DO UPDATE SET status = EXCLUDED.status, "
+    "attempts = saga_steps.attempts + 1, last_error = EXCLUDED.last_error, "
+    "updated_at = EXCLUDED.updated_at"
+)
+_STEP_COLUMNS = "saga_id, step, order_id, status, idempotency_key, last_error, attempts"
+
+
 class StaleOrder(Exception):
     """Another writer changed the order first; re-read and re-evaluate."""
 
@@ -58,7 +71,8 @@ class StaleOrder(Exception):
 class PaymentRepository(Protocol):
     async def active_fee(self) -> FeeConfig: ...
 
-    async def create_order(self, order: Order, invoice: Invoice) -> tuple[Order, bool]:
+    async def create_order(self, order: Order, invoice: Invoice, *,
+                           steps: Sequence[SagaStepRecord] = ()) -> tuple[Order, bool]:
         """Insert the order and its invoice; returns ``(order, created)``. If the auction
         already has an order, that one is returned with ``created`` False."""
         ...
@@ -73,7 +87,10 @@ class PaymentRepository(Protocol):
 
     async def save(self, before: Order, after: Order, *,
                    entries: Sequence[LedgerEntry] = (),
-                   void_invoice_at: datetime | None = None) -> None: ...
+                   void_invoice_at: datetime | None = None,
+                   steps: Sequence[SagaStepRecord] = ()) -> None: ...
+
+    async def saga_steps(self, saga_id: UUID) -> list[SagaStepRecord]: ...
 
     async def ledger(self, order_id: UUID) -> list[LedgerEntry]: ...
 
@@ -95,6 +112,10 @@ class PaymentRepository(Protocol):
         """INVOICED orders whose winner did not pay by ``payment_due_at``."""
         ...
 
+    async def stuck_captures(self, captured_before: datetime, limit: int) -> list[Order]:
+        """CAPTURED orders whose S3 hold a crash or a failure interrupted."""
+        ...
+
 
 class InMemoryPaymentRepository:
     def __init__(self, fee: FeeConfig = ACTIVE_FEE) -> None:
@@ -103,17 +124,30 @@ class InMemoryPaymentRepository:
         self.invoices: dict[UUID, Invoice] = {}
         self.entries: list[LedgerEntry] = []
         self.events: dict[tuple[str, str], datetime | None] = {}
+        self.steps: dict[tuple[UUID, Step], SagaStepRecord] = {}
 
     async def active_fee(self) -> FeeConfig:
         return self.fee
 
-    async def create_order(self, order: Order, invoice: Invoice) -> tuple[Order, bool]:
+    async def create_order(self, order: Order, invoice: Invoice, *,
+                           steps: Sequence[SagaStepRecord] = ()) -> tuple[Order, bool]:
         existing = await self.by_auction(order.auction_id)
         if existing is not None:
             return existing, False
         self.orders[order.id] = order
         self.invoices[order.id] = invoice
+        self._record_steps(steps)
         return order, True
+
+    def _record_steps(self, steps: Sequence[SagaStepRecord]) -> None:
+        for record in steps:
+            previous = self.steps.get((record.saga_id, record.step))
+            attempts = previous.attempts + 1 if previous else 1
+            self.steps[(record.saga_id, record.step)] = replace(record, attempts=attempts)
+
+    async def saga_steps(self, saga_id: UUID) -> list[SagaStepRecord]:
+        return sorted((r for (saga, _), r in self.steps.items() if saga == saga_id),
+                      key=lambda r: r.step)
 
     async def get(self, order_id: UUID) -> Order | None:
         return self.orders.get(order_id)
@@ -130,7 +164,8 @@ class InMemoryPaymentRepository:
 
     async def save(self, before: Order, after: Order, *,
                    entries: Sequence[LedgerEntry] = (),
-                   void_invoice_at: datetime | None = None) -> None:
+                   void_invoice_at: datetime | None = None,
+                   steps: Sequence[SagaStepRecord] = ()) -> None:
         current = self.orders.get(before.id)
         if current is None or current.version != before.version:
             raise StaleOrder(str(before.id))
@@ -143,6 +178,7 @@ class InMemoryPaymentRepository:
             invoice = self.invoices[after.id]
             self.invoices[after.id] = replace(invoice, voided_at=invoice.voided_at
                                               or void_invoice_at)
+        self._record_steps(steps)
 
     async def ledger(self, order_id: UUID) -> list[LedgerEntry]:
         return [entry for entry in self.entries if entry.order_id == order_id]
@@ -169,6 +205,10 @@ class InMemoryPaymentRepository:
         return [o for o in self.orders.values() if o.state == "INVOICED"
                 and o.payment_due_at is not None and o.payment_due_at <= now][:limit]
 
+    async def stuck_captures(self, captured_before: datetime, limit: int) -> list[Order]:
+        return [o for o in self.orders.values() if o.state == "CAPTURED"
+                and o.updated_at <= captured_before][:limit]
+
 
 def _order(row: Any) -> Order:
     values = dict(row)
@@ -180,6 +220,21 @@ def _invoice(row: Any) -> Invoice:
     values = dict(row)
     values["currency"] = values["currency"].strip()
     return Invoice(**values)
+
+
+def _step(row: Any) -> SagaStepRecord:
+    values = dict(row)
+    values["step"] = Step(values["step"])
+    values["status"] = StepStatus(values["status"])
+    return SagaStepRecord(**values)
+
+
+async def _upsert_steps(connection: Any, steps: Sequence[SagaStepRecord],
+                        now: datetime) -> None:
+    for record in steps:
+        await connection.execute(
+            _UPSERT_STEP, record.saga_id, str(record.step), record.order_id,
+            str(record.status), record.idempotency_key, record.last_error, now)
 
 
 def _entry(row: Any) -> LedgerEntry:
@@ -212,7 +267,8 @@ class PostgresPaymentRepository:
             )
         return None if row is None else _order(row)
 
-    async def create_order(self, order: Order, invoice: Invoice) -> tuple[Order, bool]:
+    async def create_order(self, order: Order, invoice: Invoice, *,
+                           steps: Sequence[SagaStepRecord] = ()) -> tuple[Order, bool]:
         async with self.pool.acquire() as connection, connection.transaction():
             inserted = await connection.fetchval(
                 "INSERT INTO orders (id, auction_id, buyer_id, seller_id, winning_bid_id, "
@@ -234,6 +290,7 @@ class PostgresPaymentRepository:
                     invoice.convenience_fee, invoice.total, invoice.currency,
                     invoice.fee_version, invoice.issued_at, invoice.voided_at,
                 )
+                await _upsert_steps(connection, steps, order.created_at)
                 return order, True
         existing = await self.by_auction(order.auction_id)
         if existing is None:  # pragma: no cover - the conflicting row cannot vanish
@@ -259,7 +316,8 @@ class PostgresPaymentRepository:
 
     async def save(self, before: Order, after: Order, *,
                    entries: Sequence[LedgerEntry] = (),
-                   void_invoice_at: datetime | None = None) -> None:
+                   void_invoice_at: datetime | None = None,
+                   steps: Sequence[SagaStepRecord] = ()) -> None:
         async with self.pool.acquire() as connection, connection.transaction():
             if entries:
                 existing = [_entry(row) for row in await connection.fetch(
@@ -285,6 +343,14 @@ class PostgresPaymentRepository:
                     "UPDATE invoices SET voided_at = $1 WHERE order_id = $2 AND voided_at IS NULL",
                     void_invoice_at, after.id,
                 )
+            await _upsert_steps(connection, steps, after.updated_at)
+
+    async def saga_steps(self, saga_id: UUID) -> list[SagaStepRecord]:
+        async with self.pool.acquire() as connection:
+            rows = await connection.fetch(
+                f"SELECT {_STEP_COLUMNS} FROM saga_steps "  # noqa: S608
+                "WHERE saga_id = $1 ORDER BY step", saga_id)
+        return [_step(row) for row in rows]
 
     async def ledger(self, order_id: UUID) -> list[LedgerEntry]:
         async with self.pool.acquire() as connection:
@@ -334,3 +400,8 @@ class PostgresPaymentRepository:
         return await self._scan(
             "state = 'INVOICED' AND payment_due_at <= $1 ORDER BY payment_due_at LIMIT $2",
             now, limit)
+
+    async def stuck_captures(self, captured_before: datetime, limit: int) -> list[Order]:
+        return await self._scan(
+            "state = 'CAPTURED' AND updated_at <= $1 ORDER BY updated_at LIMIT $2",
+            captured_before, limit)

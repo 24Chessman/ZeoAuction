@@ -11,6 +11,7 @@
 | **Plan 2** | #59 pulled forward: `PaymentPort` + deterministic `MockPaymentAdapter` |
 | **Plan 3** | `GET /fees/quote` stub (#70, AC-07) |
 | **Plan 4** | #61 fee engine, #62 escrow ledger, #60 Razorpay adapter, #34 invoice, #33 settlement S1–S3 + capture breaker |
+| **Plan 5** | #63 saga (`app/domain/saga.py`): progress in `payment.saga_steps`, S3 resumed by the worker, S2 compensated by a full reversal + COMPENSATION rows (O4a), failure injection at every step; #64 webhook exactly-once tests (`tests/test_webhooks.py`) |
 
 ## Responsibility
 

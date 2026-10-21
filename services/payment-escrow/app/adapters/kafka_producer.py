@@ -30,7 +30,9 @@ def iso_utc(moment: datetime) -> str:
 
 
 def build_settlement_step(*, event_id: UUID, order: Order, step: str,
-                          occurred_at: datetime) -> dict[str, Any]:
+                          occurred_at: datetime, operation: str | None = None) -> dict[str, Any]:
+    """``operation`` overrides the step's usual money movement, e.g. ``reverse-capture`` for a
+    COMPENSATED step that undid a capture (#63)."""
     if step not in STEP_TYPES:
         raise ValueError(f"unknown settlement step {step}")
     return {
@@ -45,7 +47,8 @@ def build_settlement_step(*, event_id: UUID, order: Order, step: str,
         "currency": order.currency,
         "fee_version": order.fee_version,
         "saga_id": str(order.saga_id),
-        "idempotency_key": order.idempotency_key(STEP_OPERATION.get(step, step.lower())),
+        "idempotency_key": order.idempotency_key(
+            operation or STEP_OPERATION.get(step, step.lower())),
         "occurred_at": iso_utc(occurred_at),
     }
 

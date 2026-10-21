@@ -67,8 +67,9 @@ class Clock:
 class Harness:
     """The service over HTTP, with an in-memory repository, the mock adapter and a fake clock."""
 
-    def __init__(self, port: MockPaymentAdapter | None = None) -> None:
-        self.repo = InMemoryPaymentRepository()
+    def __init__(self, port: MockPaymentAdapter | None = None,
+                 repo: InMemoryPaymentRepository | None = None) -> None:
+        self.repo = repo or InMemoryPaymentRepository()
         self.events = InMemorySettlementEventPublisher()
         self.port = port or MockPaymentAdapter()
         self.app = build_app(SETTINGS, self.repo, port=self.port, publisher=self.events,

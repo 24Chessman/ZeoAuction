@@ -15,6 +15,15 @@ A capture that fails transiently, or while the Orchestration -> Payment breaker 
 deferred, never abandoned. A definitive failure, or a winner who never pays within the payment
 window, compensates S1 (O4): CANCELLED, invoice voided, no partial settlement remains.
 
+Saga (#63, ``app/domain/saga.py``). Each step's progress is upserted into ``saga_steps`` in the
+step's own transaction. An order left CAPTURED (a crash, or a database failure between S2 and
+S3) is resumed by the worker: S3 is retried. If S3 fails definitively, S2 is compensated
+(O4a): the capture is fully reversed at the provider with key ``order:{id}:reverse-capture``,
+COMPENSATION rows return custody to zero, the order is CANCELLED with its invoice voided, and
+``payment_saga_compensations{step="S2"}`` plus an error log raise the operational alert. A
+reversal the provider can't do right now leaves the order CAPTURED for the next pass, with the
+same key, so it is never refunded twice.
+
 Every step is committed with its ledger rows in one transaction, then published as
 ``SettlementStep v1``. If the broker is down the step stands, and the failure is counted.
 """
@@ -34,13 +43,21 @@ from app.adapters.repository import PaymentRepository, StaleOrder
 from app.domain import orders as machine
 from app.domain.fees import FeeError, FeeQuote, quote
 from app.domain.invoice import Invoice, issue_invoice
-from app.domain.ledger import LedgerEntry, capture_entry, hold_entries
+from app.domain.ledger import LedgerEntry, LedgerError, capture_entry, hold_entries
 from app.domain.orders import (
     CAPTURABLE_STATES,
     IllegalOrderTransition,
     Order,
     OrderValidationError,
     SettlementRequest,
+)
+from app.domain.saga import (
+    REVERSE_CAPTURE,
+    SagaStepRecord,
+    Step,
+    StepStatus,
+    reversal_entries,
+    step_record,
 )
 from app.payment_port.mock_adapter import MockPaymentAdapter
 from app.payment_port.port import (
@@ -62,6 +79,8 @@ AUTHORIZATION_EVENTS = frozenset({"payment.authorized", "payment.captured"})
 # An order left AUTHORIZED this long (the process died between authorisation and capture) is
 # picked up by the retrier; capture is idempotent, so this can never capture twice.
 STUCK_AUTHORIZATION = timedelta(minutes=2)
+# Likewise an order left CAPTURED: S3 is resumed (or, if it can't succeed, S2 compensated).
+STUCK_CAPTURE = timedelta(minutes=2)
 MAX_SAVE_ATTEMPTS = 3
 
 
@@ -77,6 +96,13 @@ class PaymentMetrics:
             ["reason"], registry=registry)
         self.webhooks = Counter("payment_webhooks", "Verified provider webhooks, by outcome.",
                                 ["provider", "outcome"], registry=registry)
+        self.compensations = Counter(
+            "payment_saga_compensations", "Saga steps compensated (an operational alert).",
+            ["step"], registry=registry)
+        self.compensation_failures = Counter(
+            "payment_saga_compensation_failures",
+            "Compensations the provider could not do yet; retried on the next pass.",
+            ["step", "reason"], registry=registry)
 
 
 @dataclass(frozen=True)
@@ -123,10 +149,10 @@ class PaymentService:
 
     # ------------------------------------------------------------------ helpers
 
-    async def _publish(self, order: Order, step: str) -> None:
+    async def _publish(self, order: Order, step: str, operation: str | None = None) -> None:
         self.metrics.steps.labels(step=step).inc()
         event = build_settlement_step(event_id=uuid4(), order=order, step=step,
-                                      occurred_at=order.updated_at)
+                                      occurred_at=order.updated_at, operation=operation)
         try:
             await self.publisher.publish(event)
         except Exception:
@@ -192,7 +218,8 @@ class PaymentService:
             except OrderValidationError as exc:
                 raise ApiError("VALIDATION_ERROR", str(exc), 422) from exc
             existing, created = await self.repo.create_order(
-                order, issue_invoice(order, invoice_id=uuid4()))
+                order, issue_invoice(order, invoice_id=uuid4()),
+                steps=[step_record(order, Step.S1, StepStatus.DONE)])
             if created:
                 await self._publish(existing, "INVOICED")
                 return existing, True
@@ -288,8 +315,10 @@ class PaymentService:
     # ------------------------------------------------------------------ S2-S3
 
     async def _save(self, before: Order, after: Order, *, entries: Sequence[LedgerEntry] = (),
-                    void_invoice_at: datetime | None = None) -> Order:
-        await self.repo.save(before, after, entries=entries, void_invoice_at=void_invoice_at)
+                    void_invoice_at: datetime | None = None,
+                    steps: Sequence[SagaStepRecord] = ()) -> Order:
+        await self.repo.save(before, after, entries=entries, void_invoice_at=void_invoice_at,
+                             steps=steps)
         return after
 
     async def _on_authorized(self, order: Order, payment_id: str) -> Order:
@@ -327,33 +356,97 @@ class PaymentService:
             reason = "breaker_open" if isinstance(exc, CircuitOpen) else "transient"
             self.metrics.capture_failures.labels(reason=reason).inc()
             logger.warning("Capture of order %s deferred (%s): %s", order.id, reason, exc)
-            return await self._save(order, machine.capture_failed(order, self.clock()))
+            return await self._save(order, machine.capture_failed(order, self.clock()), steps=[
+                step_record(order, Step.S2, StepStatus.FAILED, f"{reason}: {exc}")])
         if isinstance(outcome, Exception) or not outcome.succeeded:
             why = outcome if isinstance(outcome, Exception) else outcome.decline_reason
             logger.error("Capture of order %s failed definitively: %s", order.id, why)
-            return await self.compensate(order)
-        now = self.clock()
-        captured = machine.capture_succeeded(order, outcome.provider_ref, now)
-        await self._save(order, captured, entries=[capture_entry(captured, outcome.provider_ref)])
+            return await self.compensate(order, failure=f"capture refused: {why}")
+        captured = machine.capture_succeeded(order, outcome.provider_ref, self.clock())
+        await self._save(order, captured, entries=[capture_entry(captured, outcome.provider_ref)],
+                         steps=[step_record(captured, Step.S2, StepStatus.DONE)])
         await self._publish(captured, "CAPTURED")
-        held = machine.hold(captured, now)
-        await self._save(captured, held, entries=hold_entries(held))
+        return await self.hold(captured)
+
+    async def hold(self, order: Order) -> Order:
+        """S3 + S4 in one transaction. A definitive failure compensates S2; any other error
+        propagates and leaves the order CAPTURED for the worker to resume."""
+        held = machine.hold(order, self.clock())
+        try:
+            entries = hold_entries(held)
+            await self._save(order, held, entries=entries, steps=[
+                step_record(held, Step.S3, StepStatus.DONE),
+                step_record(held, Step.S4, StepStatus.DONE)])
+        except LedgerError as exc:
+            logger.error("S3 for order %s failed definitively: %s", order.id, exc)
+            return await self.compensate_capture(order, failure=f"S3: {exc}")
         await self._publish(held, "HELD")
         return held
 
-    async def compensate(self, order: Order) -> Order:
+    async def compensate(self, order: Order, failure: str | None = None) -> Order:
         """O4: CANCELLED with the invoice voided. Nothing was captured, so the ledger is
         untouched; an uncaptured authorisation lapses at the provider and returns to the buyer."""
         now = self.clock()
-        cancelled = await self._save(order, machine.cancel(order, now), void_invoice_at=now)
+        steps = [step_record(order, Step.S1, StepStatus.COMPENSATED, failure)]
+        if order.provider_payment_id is not None:
+            steps.insert(0, step_record(order, Step.S2, StepStatus.FAILED, failure))
+        cancelled = await self._save(order, machine.cancel(order, now), void_invoice_at=now,
+                                     steps=steps)
         await self._publish(cancelled, "COMPENSATED")
         return cancelled
+
+    async def compensate_capture(self, order: Order, failure: str) -> Order:
+        """O4a, compensating S2 after the money was captured: reverse the capture in full at
+        the provider, write COMPENSATION rows equal and opposite to the custody rows, then
+        compensate S1. Retried with the same key until the provider can reverse it."""
+        key = order.idempotency_key(REVERSE_CAPTURE)
+        try:
+            result = await self.port.refund(order.capture_ref or "", order.captured_total,
+                                            order.currency, key)
+        except TransientPaymentError as exc:
+            self.metrics.compensation_failures.labels(step="S2", reason="transient").inc()
+            logger.error("Reversing the capture of order %s failed; retrying later: %s",
+                         order.id, exc)
+            await self._mark_failed(order, Step.S3, failure)
+            return order
+        except (InvalidPaymentRequest, IdempotencyMismatch) as exc:
+            refused: str | None = str(exc)
+        else:
+            refused = None if result.succeeded else result.decline_reason or "declined"
+        if refused is not None:
+            self.metrics.compensation_failures.labels(step="S2", reason="refused").inc()
+            logger.error("OPERATIONAL ALERT: the provider refused to reverse the capture of "
+                         "order %s (%s); it stays CAPTURED for an operator", order.id, refused)
+            await self._mark_failed(order, Step.S3, failure)
+            return order
+        now = self.clock()
+        cancelled = machine.cancel_after_capture(order, now)
+        rows = reversal_entries(cancelled, await self.repo.ledger(order.id))
+        await self._save(order, cancelled, entries=rows, void_invoice_at=now, steps=[
+            step_record(order, Step.S3, StepStatus.FAILED, failure),
+            step_record(order, Step.S2, StepStatus.COMPENSATED, failure),
+            step_record(order, Step.S1, StepStatus.COMPENSATED, failure)])
+        self.metrics.compensations.labels(step="S2").inc()
+        logger.error("OPERATIONAL ALERT: settlement of order %s compensated after capture "
+                     "(%s); %s %s returned to the buyer", order.id, failure,
+                     order.captured_total, order.currency)
+        await self._publish(cancelled, "COMPENSATED", operation=REVERSE_CAPTURE)
+        return cancelled
+
+    async def _mark_failed(self, order: Order, step: Step, failure: str) -> None:
+        """Record a failed attempt without moving the order (a no-op save bumps nothing)."""
+        try:
+            await self.repo.save(order, order, steps=[step_record(order, step,
+                                                                  StepStatus.FAILED, failure)])
+        except StaleOrder:
+            logger.info("Order %s changed while recording %s; skipped", order.id, step)
 
     # ------------------------------------------------------------------ background
 
     async def run_due_work(self, limit: int = 50) -> list[tuple[UUID, str]]:
-        """One pass of the settlement worker: retry parked captures and resume captures a
-        crash interrupted. Each order is handled independently; a lost race is skipped."""
+        """One pass of the settlement worker: retry parked captures, resume captures and holds
+        a crash interrupted, and cancel unpaid orders. Each order is handled independently; a
+        lost race is skipped."""
         done = []
         now = self.clock()
         for order in await self.repo.due_capture_retries(now, limit):
@@ -362,6 +455,8 @@ class PaymentService:
             done.append(await self._guarded(order, self.capture))
         for order in await self.repo.unpaid_past_window(now, limit):
             done.append(await self._guarded(order, self.compensate))
+        for order in await self.repo.stuck_captures(now - STUCK_CAPTURE, limit):
+            done.append(await self._guarded(order, self.hold))
         return [item for item in done if item is not None]
 
     async def _guarded(self, order: Order, step: Callable) -> tuple[UUID, str] | None:
@@ -369,6 +464,11 @@ class PaymentService:
             after = await step(order)
         except (StaleOrder, IllegalOrderTransition) as exc:
             logger.info("Settlement work on order %s skipped: %s", order.id, exc)
+            return None
+        except Exception:
+            # One order's failure (say, the database refusing its write) must not starve the
+            # others in this pass; the order is still due and is picked up again next pass.
+            logger.exception("Settlement work on order %s failed; retrying next pass", order.id)
             return None
         return order.id, after.state
 
