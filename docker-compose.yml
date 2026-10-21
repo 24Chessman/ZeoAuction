@@ -261,6 +261,10 @@ services:
       <<: *service-env
       DATABASE_URL: postgresql://fraud_svc:fraud_dev_pw@postgres:5432/zeoauction
       CONSUME_BID_EVENTS: "true"        # streaming scaffold on bid.events (#52)
+      FRAUD_ALERT_PUBLISHER: kafka      # ShillAlert v1 to fraud.alerts (#53)
+      FRAUD_ALERT_REPOSITORY: postgres  # fraud.fraud_alerts, late alerts kept as misses
+      # v1 measured at 0.6; live demos use 0.8 (docs/fraud/v1-measurement.md, known limits)
+      FRAUD_ALERT_THRESHOLD: ${FRAUD_ALERT_THRESHOLD:-0.6}
 
   bid-flusher:
     <<: *service-common

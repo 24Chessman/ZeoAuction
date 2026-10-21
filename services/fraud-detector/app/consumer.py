@@ -4,11 +4,13 @@ A separate worker: it only reads ``bid.events``, so stopping it (or it falling b
 touches bidding. Offsets are committed manually after each event is folded into its window, so
 a restart resumes from the last committed offset: at-least-once. Within a process a redelivered
 event is recognised by its ``server_seq`` and dropped (``app/windows.py``). After a restart the
-in-memory windows start empty; rebuilding them for still-open auctions is part of the Plan 5
-scorer work (#55), and is why ``bid.events`` keeps 7 days.
+in-memory windows start empty and fill again from the committed offset on; an auction already
+in flight is scored on the bids after the restart only (rebuilding from the 7-day topic is
+Plan 6, with ring clustering #55).
 
 Each accepted event is passed to :class:`app.features.FeatureExtractor` and the resulting
-features to ``on_features``, the hook the shill scorer (Plan 5) plugs into.
+features to ``on_features``, where the shill scorer plugs in (``app/pipeline.py``, #53).
+``on_expire`` hears about every auction whose window is dropped.
 """
 
 import json
@@ -29,7 +31,8 @@ BID_EVENTS_TOPIC = "bid.events"
 CONSUMER_GROUP = "fraud-detector"
 REQUIRED = ("auction_id", "bidder_id", "server_seq", "accepted_at")
 
-FeaturesHook = Callable[[BidderFeatures], Awaitable[None]]
+FeaturesHook = Callable[[BidderFeatures], Awaitable[object]]
+ExpireHook = Callable[[str], None]
 
 
 class ConsumerMetrics:
@@ -69,6 +72,10 @@ async def _ignore(_: BidderFeatures) -> None:
     return None
 
 
+def _forget(_: str) -> None:
+    return None
+
+
 class FraudConsumer:
     """Wraps an ``aiokafka.AIOKafkaConsumer`` (injected so tests can fake the broker)."""
 
@@ -80,6 +87,7 @@ class FraudConsumer:
         extractor: FeatureExtractor | None = None,
         metrics: ConsumerMetrics | None = None,
         on_features: FeaturesHook = _ignore,
+        on_expire: ExpireHook = _forget,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
         expire_every: int = 500,
     ) -> None:
@@ -88,6 +96,7 @@ class FraudConsumer:
         self.extractor = extractor or FeatureExtractor()
         self.metrics = metrics or ConsumerMetrics(CollectorRegistry())
         self.on_features = on_features
+        self.on_expire = on_expire
         self.clock = clock
         self.expire_every = expire_every
         self.stats = ConsumerStats()
@@ -136,6 +145,7 @@ class FraudConsumer:
         expired = self.windows.expire(self.clock())
         for auction_id in expired:
             self.extractor.forget_auction(auction_id)
+            self.on_expire(auction_id)
         self.metrics.windows.set(len(self.windows))
         return expired
 
