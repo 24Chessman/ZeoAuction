@@ -66,7 +66,7 @@ function AuctionDetail({ auction: initial, bids: initialBids }: { auction: Aucti
       <div className="mt-4 grid gap-8 lg:grid-cols-[minmax(0,1fr)_400px] lg:gap-x-10">
         <div className="min-w-0 space-y-8 lg:col-start-1">
           <figure>
-            <div className="overflow-hidden rounded-3xl border border-line">
+            <div className="overflow-hidden rounded-4xl border border-line shadow-lift">
               <AuctionArt id={auction.auction_id} category={auction.category} size="lg" priority className="aspect-[16/9]" />
             </div>
             <figcaption className="mt-2 text-xs text-ink-faint">
@@ -87,7 +87,7 @@ function AuctionDetail({ auction: initial, bids: initialBids }: { auction: Aucti
               )}
               {extended && <Badge tone="live" icon={<Timer className="size-3" aria-hidden />}>Extended ×{auction.extension_count}</Badge>}
             </div>
-            <h1 className="mt-4 text-[30px] font-semibold leading-[1.1] tracking-[-0.035em] sm:text-[40px]">{auction.title}</h1>
+            <h1 className="mt-5 text-[36px] font-semibold leading-[1.02] tracking-[-0.035em] sm:text-[54px]">{auction.title}</h1>
             <p className="mt-4 max-w-3xl whitespace-pre-line text-[15px] leading-relaxed text-ink-muted">{auction.description || "No description."}</p>
           </header>
         </div>
@@ -117,10 +117,10 @@ function AuctionDetail({ auction: initial, bids: initialBids }: { auction: Aucti
 
           {/* Safeguards: visible at the moment they matter. */}
           <section aria-labelledby="safeguards">
-            <h2 id="safeguards" className="text-lg font-semibold tracking-[-0.02em]">How this auction protects you</h2>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <h2 id="safeguards" className="text-2xl font-semibold">How this auction protects you</h2>
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
               <Safeguard icon={<BadgeCheck className="size-5" />} title="Verified seller">
-                Only sellers an administrator has verified can list. Their identity documents are never shown to buyers.
+                Only sellers verified through Aadhaar e-KYC and a live face check can list. Their identity details are never shown to buyers.
               </Safeguard>
               <Safeguard icon={<Landmark className="size-5" />} title={`${policy.protectionDays}-day protection window`}>
                 Your payment waits in escrow (simulated) until you confirm receipt, or {policy.protectionDays} days after shipping with no dispute.
@@ -136,7 +136,7 @@ function AuctionDetail({ auction: initial, bids: initialBids }: { auction: Aucti
 
           <section aria-labelledby="history">
             <div className="flex items-end justify-between">
-              <h2 id="history" className="text-lg font-semibold tracking-[-0.02em]">Bid history</h2>
+              <h2 id="history" className="text-2xl font-semibold">Bid history</h2>
               <p className="text-sm text-ink-faint">{bids.total} {bids.total === 1 ? "bid" : "bids"} · bidders shown by nickname</p>
             </div>
             <div className="mt-4">
@@ -144,8 +144,8 @@ function AuctionDetail({ auction: initial, bids: initialBids }: { auction: Aucti
             </div>
           </section>
 
-          <section aria-labelledby="details" className="rounded-2xl border border-line bg-surface p-5">
-            <h2 id="details" className="text-[15px] font-semibold">Listing details</h2>
+          <section aria-labelledby="details" className="rounded-3xl border border-line bg-surface p-6 shadow-card">
+            <h2 id="details" className="text-xl font-semibold">Listing details</h2>
             <dl className="mt-3 grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
               <Detail icon={<CalendarClock className="size-4" />} label="Opens" value={formatDateTime(auction.opens_at)} />
               <Detail icon={<CalendarClock className="size-4" />} label={extended ? "Closes (extended)" : "Closes"} value={formatDateTime(auction.closes_at)} />
@@ -163,10 +163,10 @@ function AuctionDetail({ auction: initial, bids: initialBids }: { auction: Aucti
 
 function Safeguard({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
   return (
-    <div className="flex gap-3.5 rounded-2xl border border-line bg-surface p-4">
-      <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-positive-soft text-positive">{icon}</span>
+    <div className="flex gap-3.5 rounded-3xl border border-line bg-surface p-5 shadow-card">
+      <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-positive-soft text-positive">{icon}</span>
       <div>
-        <p className="text-sm font-semibold">{title}</p>
+        <p className="font-display text-[17px] font-semibold tracking-[-0.01em]">{title}</p>
         <p className="mt-0.5 text-[13px] leading-relaxed text-ink-muted">{children}</p>
       </div>
     </div>
@@ -187,11 +187,11 @@ function DetailSkeleton() {
   return (
     <div className="mx-auto grid max-w-page gap-10 px-4 py-10 sm:px-6 lg:grid-cols-[minmax(0,1fr)_400px]">
       <div className="space-y-6">
-        <Skeleton className="aspect-[16/9] w-full rounded-3xl" />
+        <Skeleton className="aspect-[16/9] w-full rounded-4xl" />
         <Skeleton className="h-10 w-2/3" />
         <Skeleton className="h-20 w-full" />
       </div>
-      <Skeleton className="h-[520px] w-full rounded-3xl" />
+      <Skeleton className="h-[520px] w-full rounded-4xl" />
     </div>
   );
 }

@@ -7,23 +7,23 @@ export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "posi
 export type ButtonSize = "sm" | "md" | "lg";
 
 const variants: Record<ButtonVariant, string> = {
-  primary: "bg-brand text-brand-on hover:bg-brand-strong shadow-[0_1px_0_rgb(255_255_255/0.2)_inset,0_6px_16px_-6px_rgb(var(--brand)/0.6)]",
-  secondary: "bg-surface text-ink border border-line-strong hover:bg-surface-2 hover:border-ink-faint/50 shadow-card",
+  primary: "bg-brand text-brand-on shadow-glow hover:bg-brand-strong hover:shadow-[0_16px_32px_-12px_rgb(var(--brand)/0.65)] hover:-translate-y-px",
+  secondary: "bg-surface text-ink border border-line-strong shadow-card hover:border-ink-faint/70 hover:bg-surface-2",
   ghost: "text-ink-muted hover:text-ink hover:bg-surface-2",
   danger: "bg-danger text-white hover:opacity-90 dark:text-canvas",
   positive: "bg-positive text-white hover:opacity-90 dark:text-canvas",
 };
 
 const sizes: Record<ButtonSize, string> = {
-  sm: "h-8 px-3 text-[13px] gap-1.5 rounded-lg",
-  md: "h-10 px-4 text-sm gap-2 rounded-xl",
-  lg: "h-12 px-6 text-[15px] gap-2 rounded-xl",
+  sm: "h-9 px-3.5 text-[13px] gap-1.5 rounded-full",
+  md: "h-11 px-5 text-sm gap-2 rounded-full",
+  lg: "h-[52px] px-7 text-[15px] gap-2 rounded-full",
 };
 
 export function buttonClasses(variant: ButtonVariant = "primary", size: ButtonSize = "md", extra?: string): string {
   return cn(
-    "inline-flex select-none items-center justify-center whitespace-nowrap font-medium tracking-[-0.01em]",
-    "transition-[background-color,color,border-color,box-shadow,transform] duration-150 active:scale-[0.98]",
+    "inline-flex select-none items-center justify-center whitespace-nowrap font-semibold",
+    "transition-[background-color,color,border-color,box-shadow,transform] duration-150 active:translate-y-px",
     "disabled:pointer-events-none disabled:opacity-50",
     variants[variant],
     sizes[size],

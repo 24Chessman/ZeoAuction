@@ -5,7 +5,7 @@ import type { AuctionState, KycStatus } from "@/lib/api/types";
 export type Tone = "neutral" | "brand" | "positive" | "live" | "danger" | "info";
 
 const tones: Record<Tone, string> = {
-  neutral: "bg-surface-2 text-ink-muted ring-line-strong/60",
+  neutral: "bg-surface-2 text-ink-muted ring-line-strong/50",
   brand: "bg-brand-soft text-brand-ink ring-brand/20",
   positive: "bg-positive-soft text-positive ring-positive/20",
   live: "bg-live-soft text-live ring-live/25",
@@ -33,7 +33,7 @@ interface BadgeProps {
 
 export function Badge({ tone = "neutral", dot, pulse, icon, className, children }: BadgeProps) {
   return (
-    <span className={cn("inline-flex h-6 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 text-xs font-medium ring-1 ring-inset", tones[tone], className)}>
+    <span className={cn("inline-flex h-6 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 text-xs font-semibold ring-1 ring-inset", tones[tone], className)}>
       {dot && (
         <span className="relative flex size-1.5">
           {pulse && <span className={cn("absolute inline-flex size-full animate-live-ping rounded-full", dots[tone])} />}
@@ -50,8 +50,8 @@ export function Badge({ tone = "neutral", dot, pulse, icon, className, children 
 const AUCTION: Record<AuctionState, { label: string; tone: Tone }> = {
   DRAFT: { label: "Draft", tone: "neutral" },
   SCHEDULED: { label: "Scheduled", tone: "info" },
-  OPEN: { label: "Live", tone: "live" },
-  EXTENDED: { label: "Live · extended", tone: "live" },
+  OPEN: { label: "Live", tone: "brand" },
+  EXTENDED: { label: "Live · extended", tone: "brand" },
   CLOSING: { label: "Closing", tone: "live" },
   CLOSED: { label: "Closed", tone: "neutral" },
   SETTLED: { label: "Settled", tone: "positive" },
@@ -70,8 +70,8 @@ export function AuctionStateBadge({ state, className }: { state: AuctionState; c
 
 export const KYC_LABEL: Record<KycStatus, { label: string; tone: Tone }> = {
   NOT_SUBMITTED: { label: "Not verified", tone: "neutral" },
-  SUBMITTED: { label: "Submitted", tone: "info" },
-  UNDER_REVIEW: { label: "Under review", tone: "info" },
+  SUBMITTED: { label: "Face check pending", tone: "info" },
+  UNDER_REVIEW: { label: "Manual review", tone: "info" },
   VERIFIED: { label: "Verified seller", tone: "positive" },
   REJECTED: { label: "Rejected", tone: "danger" },
   SUSPENDED: { label: "Suspended", tone: "danger" },

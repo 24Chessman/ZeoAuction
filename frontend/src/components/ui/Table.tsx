@@ -10,7 +10,7 @@ export function Table({ className, ...rest }: HTMLAttributes<HTMLTableElement>) 
 }
 
 export function Th({ className, ...rest }: ThHTMLAttributes<HTMLTableCellElement>) {
-  return <th scope="col" className={cn("border-b border-line bg-surface-2/60 px-4 py-2.5 text-left text-2xs font-semibold uppercase tracking-[0.1em] text-ink-faint first:pl-5 last:pr-5", className)} {...rest} />;
+  return <th scope="col" className={cn("border-b border-line-strong bg-surface-2/60 px-4 py-3 text-left text-xs font-semibold text-ink-muted first:pl-5 last:pr-5", className)} {...rest} />;
 }
 
 export function Td({ className, ...rest }: TdHTMLAttributes<HTMLTableCellElement>) {

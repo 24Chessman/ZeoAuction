@@ -2,69 +2,89 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Design tokens: "Clear Glass". Space-separated RGB channels so Tailwind can apply alpha. */
+/* Design tokens: "Evening sale". Midnight ink, persimmon for the hammer, emerald, cobalt and saffron
+   as supporting colors. Space-separated RGB channels so Tailwind can apply alpha.
+   Text pairs are checked for 4.5:1 in both themes. */
 @layer base {
   :root {
     color-scheme: light;
-    --canvas: 247 247 251;
+    --canvas: 244 245 249;
     --surface: 255 255 255;
-    --surface-2: 242 242 248;
-    --surface-3: 233 233 242;
-    --ink: 14 14 24;
-    --ink-muted: 78 80 99;
-    --ink-faint: 106 108 128;
-    --line: 228 228 238;
-    --line-strong: 205 205 220;
-    --brand: 88 70 240;
-    --brand-strong: 70 52 214;
-    --brand-soft: 238 236 255;
-    --brand-ink: 72 54 216;
+    --surface-2: 236 238 245;
+    --surface-3: 224 227 238;
+    --ink: 14 18 38;
+    --ink-muted: 70 76 102;
+    --ink-faint: 100 106 132;
+    --line: 226 229 239;
+    --line-strong: 204 209 224;
+    --brand: 206 68 22;
+    --brand-strong: 172 52 14;
+    --brand-soft: 255 233 222;
+    --brand-ink: 184 56 18;
     --on-brand: 255 255 255;
     --positive: 4 120 87;
-    --positive-soft: 222 246 236;
-    --live: 180 83 9;
-    --live-soft: 254 243 214;
-    --danger: 200 30 30;
-    --danger-soft: 254 228 228;
-    --info: 29 98 202;
-    --info-soft: 224 236 255;
-    --shadow: 20 20 50;
+    --positive-soft: 216 243 232;
+    --live: 166 77 6;
+    --live-soft: 254 238 210;
+    --danger: 196 28 58;
+    --danger-soft: 253 226 231;
+    --info: 37 82 214;
+    --info-soft: 224 232 255;
+    --gold: 202 138 4;
+    --gold-soft: 254 243 199;
+    --shadow: 14 18 38;
+    /* The midnight band used by the hero, auth panel and footer; the same in both themes. */
+    --night: 12 15 34;
+    --night-2: 22 26 52;
   }
 
   .dark {
     color-scheme: dark;
-    --canvas: 8 8 14;
-    --surface: 16 16 25;
-    --surface-2: 24 24 36;
-    --surface-3: 34 34 50;
-    --ink: 239 239 247;
-    --ink-muted: 168 170 190;
-    --ink-faint: 134 136 158;
-    --line: 36 36 54;
-    --line-strong: 56 56 80;
-    --brand: 140 128 255;
-    --brand-strong: 165 155 255;
-    --brand-soft: 34 30 72;
-    --brand-ink: 170 160 255;
-    --on-brand: 12 10 32;
+    --canvas: 9 11 24;
+    --surface: 17 20 38;
+    --surface-2: 25 29 52;
+    --surface-3: 36 41 68;
+    --ink: 236 238 246;
+    --ink-muted: 168 174 198;
+    --ink-faint: 132 138 166;
+    --line: 34 39 64;
+    --line-strong: 52 58 90;
+    --brand: 255 118 72;
+    --brand-strong: 255 145 108;
+    --brand-soft: 64 26 14;
+    --brand-ink: 255 140 102;
+    --on-brand: 26 8 2;
     --positive: 52 211 153;
-    --positive-soft: 8 44 34;
-    --live: 251 191 36;
-    --live-soft: 52 36 6;
-    --danger: 248 113 113;
-    --danger-soft: 58 18 22;
-    --info: 120 170 255;
-    --info-soft: 18 32 64;
+    --positive-soft: 10 48 38;
+    --live: 251 176 60;
+    --live-soft: 60 40 10;
+    --danger: 251 113 133;
+    --danger-soft: 66 16 28;
+    --info: 129 160 255;
+    --info-soft: 22 32 70;
+    --gold: 250 204 21;
+    --gold-soft: 58 46 8;
     --shadow: 0 0 0;
+    --night: 5 6 16;
+    --night-2: 17 20 38;
   }
 
   html {
     @apply bg-canvas text-ink antialiased;
-    font-feature-settings: "ss01", "cv11";
     text-rendering: optimizeLegibility;
   }
   body {
     @apply min-h-dvh font-sans;
+  }
+  h1,
+  h2,
+  h3 {
+    @apply font-display;
+    font-optical-sizing: auto;
+  }
+  h1,
+  h2 {
+    letter-spacing: -0.025em;
   }
   ::selection {
     background: rgb(var(--brand) / 0.22);
@@ -86,23 +106,23 @@
     font-variant-numeric: tabular-nums lining-nums;
   }
   .eyebrow {
-    @apply text-2xs font-semibold uppercase tracking-[0.12em] text-ink-faint;
+    @apply text-[13px] font-semibold text-brand-ink;
   }
   .hairline {
     @apply border-line;
   }
-  .bg-grid {
+  /* The midnight band: a deep ink field lit by two soft color pools. */
+  .bg-midnight {
+    background-color: rgb(var(--night));
     background-image:
-      linear-gradient(rgb(var(--line) / 0.7) 1px, transparent 1px),
-      linear-gradient(90deg, rgb(var(--line) / 0.7) 1px, transparent 1px);
-    background-size: 44px 44px;
-    mask-image: radial-gradient(ellipse at 50% 0%, black 20%, transparent 70%);
+      radial-gradient(60% 80% at 85% 10%, rgb(206 68 22 / 0.28), transparent 60%),
+      radial-gradient(50% 70% at 0% 100%, rgb(37 82 214 / 0.28), transparent 60%);
   }
-  .bg-aurora {
-    background:
-      radial-gradient(60% 50% at 20% 0%, rgb(var(--brand) / 0.18), transparent 70%),
-      radial-gradient(40% 40% at 85% 10%, rgb(var(--info) / 0.14), transparent 70%),
-      radial-gradient(40% 40% at 60% 90%, rgb(var(--positive) / 0.08), transparent 70%);
+  /* A brand-tinted wash for headers of panels and pages. */
+  .bg-wash {
+    background-image:
+      radial-gradient(80% 120% at 100% 0%, rgb(var(--brand) / 0.09), transparent 60%),
+      radial-gradient(70% 110% at 0% 100%, rgb(var(--info) / 0.07), transparent 60%);
   }
   .skeleton {
     background: linear-gradient(90deg, rgb(var(--surface-2)), rgb(var(--surface-3)), rgb(var(--surface-2)));

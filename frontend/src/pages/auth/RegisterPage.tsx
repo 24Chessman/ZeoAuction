@@ -59,7 +59,7 @@ export function RegisterPage() {
   return (
     <AuthLayout
       title="Create your account"
-      subtitle="Bid on anything listed. No identity documents needed until you want to sell."
+      subtitle="Bid on anything listed. No identity check needed until you want to sell."
       footer={
         <>
           Already have an account?{" "}
@@ -108,7 +108,7 @@ export function RegisterPage() {
         </ul>
 
         {/* SDD §8.9: the escrow-simulation notice at sign-up. */}
-        <div className="flex gap-3 rounded-xl bg-brand-soft/60 p-3.5 text-[13px] text-ink-muted ring-1 ring-brand/15">
+        <div className="flex gap-3 rounded-xl bg-gold-soft/60 p-3.5 text-[13px] text-ink-muted ring-1 ring-gold/30">
           <FlaskConical className="mt-0.5 size-4 shrink-0 text-brand-ink" aria-hidden />
           <p>
             ZeoAuction is a coursework simulation. Payments run in <strong className="font-semibold text-ink">test mode</strong> and escrow is simulated: no real money moves.

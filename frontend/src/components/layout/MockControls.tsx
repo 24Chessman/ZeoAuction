@@ -14,7 +14,7 @@ export function MockControls() {
   return (
     <div className="fixed bottom-4 left-4 z-40">
       {open ? (
-        <div className="w-72 rounded-2xl border border-line bg-surface/95 p-4 shadow-lift backdrop-blur-md animate-toast-in">
+        <div className="w-72 rounded-3xl border border-line bg-surface p-4 shadow-float animate-toast-in">
           <div className="flex items-center justify-between">
             <p className="flex items-center gap-2 text-sm font-semibold">
               <FlaskConical className="size-4 text-brand-ink" aria-hidden /> Demo controls
@@ -30,7 +30,7 @@ export function MockControls() {
             <li>admin@zeo.local</li>
           </ul>
           <div className="mt-3 grid gap-2">
-            <button onClick={() => mockNetwork.dropFor(6000)} className="flex items-center gap-2 rounded-xl border border-line px-3 py-2 text-left text-sm hover:bg-surface-2">
+            <button onClick={() => mockNetwork.dropFor(6000)} className="flex items-center gap-2 rounded-2xl border border-line px-3 py-2.5 text-left text-sm hover:bg-surface-2">
               <Unplug className="size-4 text-live" aria-hidden /> Drop connection for 6 s
             </button>
             <button
@@ -39,7 +39,7 @@ export function MockControls() {
                 session.clear();
                 window.location.assign("/");
               }}
-              className="flex items-center gap-2 rounded-xl border border-line px-3 py-2 text-left text-sm hover:bg-surface-2"
+              className="flex items-center gap-2 rounded-2xl border border-line px-3 py-2.5 text-left text-sm hover:bg-surface-2"
             >
               <RotateCcw className="size-4 text-ink-muted" aria-hidden /> Reset demo data
             </button>
@@ -48,7 +48,7 @@ export function MockControls() {
       ) : (
         <button
           onClick={() => setOpen(true)}
-          className="flex items-center gap-2 rounded-full border border-line bg-surface/90 px-3 py-2 text-xs font-medium text-ink-muted shadow-lift backdrop-blur-md hover:text-ink"
+          className="flex items-center gap-2 rounded-full border border-line bg-surface px-3.5 py-2 text-xs font-semibold text-ink-muted shadow-lift hover:text-ink"
         >
           <FlaskConical className="size-3.5 text-brand-ink" aria-hidden /> Demo
         </button>

@@ -162,7 +162,7 @@ export function CreateAuctionPage() {
                 <Eye className="size-3.5" aria-hidden /> Preview
               </p>
               <p className="mt-2 line-clamp-2 font-semibold">{title.trim() || "Your auction title"}</p>
-              <p className="tnum mt-3 text-2xl font-semibold tracking-[-0.02em]">{startingCents !== null ? formatMoney(startingCents, policy.currency) : formatMoney(0, policy.currency)}</p>
+              <p className="tnum mt-3 font-display text-3xl font-bold tracking-[-0.03em]">{startingCents !== null ? formatMoney(startingCents, policy.currency) : formatMoney(0, policy.currency)}</p>
               <p className="text-xs text-ink-faint">Starting price</p>
             </div>
           </Card>

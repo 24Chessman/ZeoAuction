@@ -3,11 +3,11 @@ import { AlertCircle } from "lucide-react";
 import { cn } from "@/lib/cn";
 
 const control =
-  "w-full rounded-xl border bg-surface text-ink placeholder:text-ink-faint transition-[border-color,box-shadow] duration-150 " +
+  "w-full rounded-2xl border bg-surface text-ink placeholder:text-ink-faint transition-[border-color,box-shadow] duration-150 " +
   "focus:border-brand focus:shadow-focus focus:outline-none disabled:cursor-not-allowed disabled:opacity-60";
 
 function controlClasses(invalid: boolean, extra?: string): string {
-  return cn(control, invalid ? "border-danger" : "border-line-strong hover:border-ink-faint/60", extra);
+  return cn(control, invalid ? "border-danger" : "border-line-strong shadow-card hover:border-ink-faint/60", extra);
 }
 
 interface FieldProps {
@@ -51,13 +51,13 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(function Input({ className, leading, trailing, ...rest }, ref) {
   const invalid = rest["aria-invalid"] === true || rest["aria-invalid"] === "true";
-  if (!leading && !trailing) return <input ref={ref} className={controlClasses(invalid, cn("h-11 px-3.5 text-[15px]", className))} {...rest} />;
+  if (!leading && !trailing) return <input ref={ref} className={controlClasses(invalid, cn("h-12 px-4 text-[15px]", className))} {...rest} />;
   return (
     <div className="relative">
-      {leading && <span className="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-ink-faint">{leading}</span>}
+      {leading && <span className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-ink-faint">{leading}</span>}
       <input
         ref={ref}
-        className={controlClasses(invalid, cn("h-11 text-[15px]", leading ? "pl-9" : "pl-3.5", trailing ? "pr-24" : "pr-3.5", className))}
+        className={controlClasses(invalid, cn("h-12 text-[15px]", leading ? "pl-10" : "pl-4", trailing ? "pr-24" : "pr-4", className))}
         {...rest}
       />
       {trailing && <span className="absolute inset-y-0 right-1.5 flex items-center">{trailing}</span>}
@@ -67,13 +67,13 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input({ c
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement>>(function Textarea({ className, ...rest }, ref) {
   const invalid = rest["aria-invalid"] === true || rest["aria-invalid"] === "true";
-  return <textarea ref={ref} className={controlClasses(invalid, cn("min-h-28 px-3.5 py-3 text-[15px] leading-relaxed", className))} {...rest} />;
+  return <textarea ref={ref} className={controlClasses(invalid, cn("min-h-28 px-4 py-3 text-[15px] leading-relaxed", className))} {...rest} />;
 });
 
 export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(function Select({ className, children, ...rest }, ref) {
   const invalid = rest["aria-invalid"] === true || rest["aria-invalid"] === "true";
   return (
-    <select ref={ref} className={controlClasses(invalid, cn("h-11 appearance-none bg-[length:16px] bg-[right_12px_center] bg-no-repeat px-3.5 pr-10 text-[15px]", className))}
+    <select ref={ref} className={controlClasses(invalid, cn("h-12 appearance-none bg-[length:16px] bg-[right_14px_center] bg-no-repeat px-4 pr-10 text-[15px]", className))}
       style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")" }}
       {...rest}
     >

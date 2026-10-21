@@ -6,11 +6,17 @@ import { formatBytes } from "@/lib/format";
 export interface FileRules {
   accept: string[]; // MIME types
   maxBytes: number;
+  /** File name endings that also count (browsers disagree on some MIME types, e.g. ZIP). */
+  extensions?: string[];
+  /** How the accepted types read to a person, e.g. "JPEG, PNG or PDF". */
+  typeLabel?: string;
 }
 
-/** The same checks the KYC service makes (type and size); the server still sniffs the bytes. */
+/** A first check in the browser (type and size); the server still checks the bytes. */
 export function checkFile(file: File, rules: FileRules): string | null {
-  if (!rules.accept.includes(file.type)) return "Use a JPEG, PNG or PDF file";
+  const name = file.name.toLowerCase();
+  const typeOk = rules.accept.includes(file.type) || Boolean(rules.extensions?.some((ext) => name.endsWith(ext)));
+  if (!typeOk) return `Use a ${rules.typeLabel ?? "JPEG, PNG or PDF"} file`;
   if (file.size > rules.maxBytes) return `The file is larger than ${formatBytes(rules.maxBytes)}`;
   return null;
 }
@@ -90,7 +96,7 @@ export function FileDrop({ label, description, required, file, rules, disabled, 
           <span className="text-sm font-medium text-ink">
             Drop a file or <span className="text-brand-ink underline-offset-2 group-hover:underline">browse</span>
           </span>
-          <span id={`${id}-desc`} className="text-xs text-ink-faint">{description ?? `JPEG, PNG or PDF · up to ${formatBytes(rules.maxBytes)}`}</span>
+          <span id={`${id}-desc`} className="text-xs text-ink-faint">{description ?? `${rules.typeLabel ?? "JPEG, PNG or PDF"} · up to ${formatBytes(rules.maxBytes)}`}</span>
           {error && <span className="text-xs text-danger">{error}</span>}
         </button>
       )}
@@ -98,7 +104,7 @@ export function FileDrop({ label, description, required, file, rules, disabled, 
         ref={input}
         type="file"
         className="sr-only"
-        accept={rules.accept.join(",")}
+        accept={[...rules.accept, ...(rules.extensions ?? [])].join(",")}
         aria-labelledby={`${id}-label`}
         tabIndex={-1}
         onChange={(event) => {

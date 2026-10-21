@@ -60,7 +60,7 @@ export function Modal({ open, onClose, title, description, children, footer, siz
   if (!open) return null;
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-6">
-      <div className="absolute inset-0 bg-[rgb(8_8_16/0.55)] backdrop-blur-sm animate-fade-up" onClick={onClose} aria-hidden />
+      <div className="absolute inset-0 bg-night/60 backdrop-blur-sm animate-fade-up" onClick={onClose} aria-hidden />
       <div
         ref={panel}
         role="dialog"
@@ -69,16 +69,16 @@ export function Modal({ open, onClose, title, description, children, footer, siz
         aria-describedby={description ? descriptionId : undefined}
         tabIndex={-1}
         className={cn(
-          "relative flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-3xl border border-line bg-surface shadow-lift animate-toast-in sm:rounded-3xl",
+          "relative flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-4xl border border-line bg-surface shadow-float animate-toast-in sm:rounded-4xl",
           widths[size],
         )}
       >
         <div className="flex items-start justify-between gap-4 border-b border-line px-6 py-5">
           <div>
-            <h2 id={titleId} className="text-lg font-semibold tracking-[-0.02em]">{title}</h2>
+            <h2 id={titleId} className="text-2xl font-semibold leading-tight">{title}</h2>
             {description && <p id={descriptionId} className="mt-1 text-sm text-ink-muted">{description}</p>}
           </div>
-          <button onClick={onClose} className="-mr-2 rounded-lg p-2 text-ink-faint hover:bg-surface-2 hover:text-ink" aria-label="Close">
+          <button onClick={onClose} className="-mr-2 rounded-full p-2 text-ink-faint hover:bg-surface-2 hover:text-ink" aria-label="Close">
             <X className="size-4" />
           </button>
         </div>

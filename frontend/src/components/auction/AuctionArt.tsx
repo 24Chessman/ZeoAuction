@@ -52,9 +52,9 @@ export function AuctionArt({ id, category, className, size = "md", priority = fa
     <div
       className={cn("relative isolate overflow-hidden bg-surface-2", className)}
       style={{
-        background: `radial-gradient(120% 90% at ${x}% ${y}%, hsl(${a} 90% 72% / .95), transparent 60%),
-                     radial-gradient(90% 90% at ${100 - x}% ${100 - y}%, hsl(${b} 85% 62% / .9), transparent 65%),
-                     linear-gradient(135deg, hsl(${a} 70% 30%), hsl(${b} 65% 22%))`,
+        background: `radial-gradient(120% 90% at ${x}% ${y}%, hsl(${a} 32% 58% / .9), transparent 60%),
+                     radial-gradient(90% 90% at ${100 - x}% ${100 - y}%, hsl(${b} 28% 46% / .85), transparent 65%),
+                     linear-gradient(135deg, hsl(${a} 25% 26%), hsl(${b} 22% 18%))`,
       }}
     >
       {state !== "loaded" && (

@@ -41,7 +41,7 @@ export function SellerAuctionActions({ auction, onChange }: { auction: Auction; 
   const copy = error ? describeError(error) : null;
 
   return (
-    <div className="rounded-2xl border border-brand/25 bg-brand-soft/40 p-4">
+    <div className="rounded-2xl border border-gold/40 bg-gold-soft/50 p-4">
       <p className="flex items-center gap-2 text-sm font-semibold">
         <Wrench className="size-4 text-brand-ink" aria-hidden /> {isSeller ? "Your listing" : "Operator controls"}
       </p>

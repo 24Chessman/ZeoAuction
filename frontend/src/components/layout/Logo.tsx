@@ -1,27 +1,23 @@
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/cn";
 
+/** A rounded tile with a stroked Z and a persimmon "hammer" dot at its corner. */
 export function LogoMark({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 32 32" className={cn("size-8", className)} aria-hidden>
-      <defs>
-        <linearGradient id="zeo-mark" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="rgb(var(--brand))" />
-          <stop offset="1" stopColor="rgb(var(--brand-strong))" />
-        </linearGradient>
-      </defs>
-      <rect width="32" height="32" rx="9" fill="url(#zeo-mark)" />
-      <path d="M10 10.5h12l-12 11h12" fill="none" stroke="rgb(var(--on-brand))" strokeWidth="2.75" strokeLinecap="round" strokeLinejoin="round" />
+      <rect width="32" height="32" rx="10" fill="rgb(var(--ink))" />
+      <path d="M10 10.5h12L10 21.5h12" fill="none" stroke="rgb(var(--canvas))" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="24.5" cy="7.5" r="3.5" fill="rgb(var(--brand))" stroke="rgb(var(--ink))" strokeWidth="1.5" />
     </svg>
   );
 }
 
-export function Logo({ className }: { className?: string }) {
+export function Logo({ className, tone = "default" }: { className?: string; tone?: "default" | "night" }) {
   return (
     <Link to="/" className={cn("group flex items-center gap-2.5 rounded-lg", className)} aria-label="ZeoAuction home">
-      <LogoMark className="transition-transform duration-300 group-hover:rotate-[-8deg]" />
-      <span className="text-[17px] font-semibold tracking-[-0.03em]">
-        Zeo<span className="text-ink-muted">Auction</span>
+      <LogoMark className={cn("rounded-[10px] transition-transform duration-300 group-hover:-rotate-6", tone === "night" && "ring-1 ring-white/25")} />
+      <span className={cn("font-display text-[21px] font-bold leading-none tracking-[-0.04em]", tone === "night" && "text-white")}>
+        zeo<span className="text-brand">auction</span>
       </span>
     </Link>
   );

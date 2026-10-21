@@ -18,8 +18,8 @@ function NavItem({ to, children }: { to: string; children: React.ReactNode }) {
       to={to}
       className={({ isActive }) =>
         cn(
-          "rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
-          isActive ? "bg-surface-2 text-ink" : "text-ink-muted hover:bg-surface-2/70 hover:text-ink",
+          "rounded-full px-4 py-2 text-[14px] font-semibold transition-colors",
+          isActive ? "bg-ink text-canvas" : "text-ink-muted hover:bg-surface-2 hover:text-ink",
         )
       }
     >
@@ -39,7 +39,7 @@ function ConnectionDot() {
   } as const;
   const item = map[status];
   return (
-    <span className="hidden items-center gap-2 rounded-full border border-line px-2.5 py-1 text-xs font-medium text-ink-muted md:inline-flex" title={`Real-time connection: ${item.label}`}>
+    <span className="hidden items-center gap-2 rounded-full border border-line bg-surface px-3 py-1.5 text-xs font-semibold text-ink-muted md:inline-flex" title={`Real-time connection: ${item.label}`}>
       <span className="relative flex size-2">
         {item.ring && <span className={cn("absolute inline-flex size-full animate-live-ping rounded-full opacity-60", item.ring)} />}
         <span className={cn("relative inline-flex size-2 rounded-full", item.cls)} />
@@ -54,7 +54,7 @@ function ThemeToggle() {
   return (
     <button
       onClick={toggle}
-      className="grid size-9 place-items-center rounded-xl text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+      className="grid size-10 place-items-center rounded-full border border-line bg-surface text-ink-muted transition-colors hover:border-line-strong hover:text-ink"
       aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
     >
       {theme === "dark" ? <Sun className="size-[18px]" /> : <Moon className="size-[18px]" />}
@@ -87,31 +87,31 @@ function UserMenu() {
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-2 rounded-xl py-1 pl-1 pr-2 transition-colors hover:bg-surface-2"
+        className="flex items-center gap-2 rounded-full border border-line bg-surface py-1 pl-1 pr-3 transition-colors hover:border-line-strong"
         aria-haspopup="menu"
         aria-expanded={open}
       >
-        <span className="grid size-8 place-items-center rounded-lg bg-gradient-to-br from-brand to-info text-xs font-semibold text-white">
+        <span className="grid size-8 place-items-center rounded-full bg-gradient-to-br from-brand to-gold font-display text-[13px] font-bold text-white">
           {initials(user.display_name)}
         </span>
         <span className="hidden max-w-32 truncate text-sm font-medium sm:block">{user.display_name}</span>
         <ChevronDown className="size-4 text-ink-faint" aria-hidden />
       </button>
       {open && (
-        <div role="menu" className="absolute right-0 top-full z-40 mt-2 w-64 overflow-hidden rounded-2xl border border-line bg-surface p-1.5 shadow-lift animate-fade-up">
+        <div role="menu" className="absolute right-0 top-full z-40 mt-2 w-72 overflow-hidden rounded-3xl border border-line bg-surface p-2 shadow-float animate-fade-up">
           <div className="px-3 py-2.5">
             <p className="truncate text-sm font-semibold">{user.display_name}</p>
             <p className="truncate text-xs text-ink-faint">{user.email}</p>
             <div className="mt-2 flex flex-wrap gap-1.5">
               <KycBadge status={user.kyc_status} />
-              {user.role === "ADMIN" && <span className="inline-flex h-6 items-center rounded-full bg-ink px-2.5 text-xs font-medium text-canvas">Admin</span>}
+              {user.role === "ADMIN" && <span className="inline-flex h-6 items-center rounded-full bg-ink px-2.5 text-xs font-semibold text-canvas">Admin</span>}
             </div>
           </div>
           <div className="my-1 h-px bg-line" />
-          <Link role="menuitem" to="/account" onClick={() => setOpen(false)} className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-ink-muted hover:bg-surface-2 hover:text-ink">
+          <Link role="menuitem" to="/account" onClick={() => setOpen(false)} className="flex items-center gap-2.5 rounded-2xl px-3 py-2.5 text-sm font-medium text-ink-muted hover:bg-surface-2 hover:text-ink">
             <User className="size-4" aria-hidden /> Account and orders
           </Link>
-          <Link role="menuitem" to="/sell/verify" onClick={() => setOpen(false)} className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-ink-muted hover:bg-surface-2 hover:text-ink">
+          <Link role="menuitem" to="/sell/verify" onClick={() => setOpen(false)} className="flex items-center gap-2.5 rounded-2xl px-3 py-2.5 text-sm font-medium text-ink-muted hover:bg-surface-2 hover:text-ink">
             <ShieldCheck className="size-4" aria-hidden /> Seller verification
           </Link>
           <button
@@ -133,9 +133,9 @@ function UserMenu() {
 
 function SimulationStrip() {
   return (
-    <div className="border-b border-line bg-surface-2/60 text-[12px] text-ink-muted">
+    <div className="bg-midnight text-[12px] text-white/75">
       <div className="mx-auto flex max-w-page items-center justify-center gap-2 px-4 py-1.5 text-center sm:px-6">
-        <FlaskConical className="size-3.5 shrink-0 text-brand-ink" aria-hidden />
+        <FlaskConical className="size-3.5 shrink-0 text-brand" aria-hidden />
         <span>
           Test mode: payments are not real and escrow is simulated.{useMocks && " You're viewing synthetic demo data."}
         </span>
@@ -189,13 +189,13 @@ export function AppShell() {
       </a>
       <SimulationStrip />
       <OfflineBar />
-      <header className="sticky top-0 z-30 border-b border-line/80 bg-canvas/75 backdrop-blur-xl backdrop-saturate-150">
-        <div className="mx-auto flex h-16 max-w-page items-center gap-4 px-4 sm:px-6">
+      <header className="sticky top-0 z-30 border-b border-line/80 bg-canvas/80 backdrop-blur-xl backdrop-saturate-150">
+        <div className="mx-auto flex h-[68px] max-w-page items-center gap-4 px-4 sm:px-6">
           <Logo />
-          <nav className="ml-4 hidden items-center gap-1 md:flex" aria-label="Main">
+          <nav className="ml-6 hidden items-center gap-1 md:flex" aria-label="Main">
             {links}
           </nav>
-          <div className="ml-auto flex items-center gap-1.5">
+          <div className="ml-auto flex items-center gap-2">
             <ConnectionDot />
             <ThemeToggle />
             {status === "signed-in" ? (
@@ -206,7 +206,7 @@ export function AppShell() {
                 <ButtonLink to="/register" size="sm">Create account</ButtonLink>
               </div>
             ) : null}
-            <button className="grid size-9 place-items-center rounded-xl text-ink-muted hover:bg-surface-2 md:hidden" onClick={() => setMenu((m) => !m)} aria-label="Menu" aria-expanded={menu}>
+            <button className="grid size-10 place-items-center rounded-full border border-line bg-surface text-ink-muted md:hidden" onClick={() => setMenu((m) => !m)} aria-label="Menu" aria-expanded={menu}>
               {menu ? <X className="size-5" /> : <Menu className="size-5" />}
             </button>
           </div>
@@ -228,10 +228,11 @@ export function AppShell() {
         <Outlet />
       </main>
 
-      <footer className="border-t border-line">
-        <div className="mx-auto flex max-w-page flex-col gap-3 px-4 py-8 text-sm text-ink-faint sm:flex-row sm:items-center sm:justify-between sm:px-6">
-          <div className="flex items-center gap-2.5">
-            <Logo className="scale-90" />
+      <footer className="mt-16 bg-midnight text-white">
+        <div className="mx-auto flex max-w-page flex-col gap-4 px-4 py-12 text-sm text-white/60 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <div className="flex items-center gap-5">
+            <Logo tone="night" />
+            <span className="hidden font-display text-[15px] text-white/70 lg:inline">Going once, going twice, held in escrow.</span>
           </div>
           <p>
             Coursework simulation · M.Sc. IT semester 3, 2026 · Fee policy {policy.feeVersion}

@@ -38,10 +38,10 @@ export function AccountPage() {
 
       <div className="mt-8 grid gap-6 md:grid-cols-[260px_minmax(0,1fr)]">
         <Card className="h-fit p-6 text-center">
-          <span className="mx-auto grid size-20 place-items-center rounded-3xl bg-gradient-to-br from-brand to-info text-2xl font-semibold text-white shadow-glow">
+          <span className="mx-auto grid size-20 place-items-center rounded-full bg-gradient-to-br from-brand to-gold font-display text-2xl font-bold text-white ring-4 ring-brand-soft">
             {initials(user.display_name)}
           </span>
-          <p className="mt-4 text-lg font-semibold tracking-[-0.02em]">{user.display_name}</p>
+          <p className="mt-5 font-display text-xl font-semibold">{user.display_name}</p>
           <p className="truncate text-sm text-ink-faint">{user.email}</p>
           <div className="mt-3 flex flex-wrap justify-center gap-1.5">
             <KycBadge status={user.kyc_status} />
@@ -97,7 +97,7 @@ export function AccountPage() {
                     {user.kyc_status === "VERIFIED" ? "You're a verified seller" : user.kyc_status === "NOT_SUBMITTED" ? "Not verified yet" : "Verification in progress"}
                   </p>
                   <p className="text-sm text-ink-muted">
-                    {user.kyc_status === "VERIFIED" ? "You can create and publish auctions." : "Submit identity documents for an administrator to review."}
+                    {user.kyc_status === "VERIFIED" ? "You can create and publish auctions." : "Verify with your Aadhaar QR code and a quick face check."}
                   </p>
                 </div>
                 <ButtonLink to={user.kyc_status === "VERIFIED" ? "/sell" : "/sell/verify"} variant="secondary" iconRight={<ArrowRight className="size-4" />}>

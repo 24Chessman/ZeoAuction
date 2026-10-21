@@ -64,7 +64,7 @@ export function AuctionsPage() {
   }, [data]);
 
   return (
-    <div className="mx-auto max-w-page px-4 py-10 sm:px-6">
+    <div className="mx-auto max-w-page px-4 py-12 sm:px-6">
       <PageHeader
         eyebrow="Marketplace"
         title="Auctions"
@@ -72,7 +72,7 @@ export function AuctionsPage() {
       />
 
       <div className="mt-8 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex gap-1 overflow-x-auto rounded-2xl border border-line bg-surface p-1 shadow-card" role="tablist" aria-label="Auction status">
+        <div className="flex gap-1 overflow-x-auto rounded-full border border-line bg-surface p-1 shadow-card" role="tablist" aria-label="Auction status">
           {FILTERS.map((f) => (
             <button
               key={f.id}
@@ -80,13 +80,13 @@ export function AuctionsPage() {
               aria-selected={filter === f.id}
               onClick={() => setFilter(f.id)}
               className={cn(
-                "flex items-center gap-2 whitespace-nowrap rounded-xl px-3.5 py-2 text-sm font-medium transition-colors",
-                filter === f.id ? "bg-ink text-canvas shadow-card" : "text-ink-muted hover:bg-surface-2 hover:text-ink",
+                "flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition-colors",
+                filter === f.id ? "bg-ink text-canvas" : "text-ink-muted hover:bg-surface-2 hover:text-ink",
               )}
             >
-              {f.id === "live" && <span className={cn("size-1.5 rounded-full", filter === f.id ? "bg-canvas" : "bg-live")} />}
+              {f.id === "live" && <span className="size-2 rounded-full bg-brand" />}
               {f.label}
-              {data && <span className={cn("tnum text-xs", filter === f.id ? "text-canvas/60" : "text-ink-faint")}>{counts[f.id]}</span>}
+              {data && <span className={cn("tnum rounded-full px-1.5 text-xs", filter === f.id ? "bg-canvas/20 text-canvas" : "bg-surface-2 text-ink-faint")}>{counts[f.id]}</span>}
             </button>
           ))}
         </div>
@@ -112,7 +112,7 @@ export function AuctionsPage() {
             {describeError(error).hint ?? describeError(error).message}
           </Banner>
         ) : loading && !data ? (
-          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {Array.from({ length: 6 }, (_, i) => <AuctionCardSkeleton key={i} />)}
           </div>
         ) : rows.length === 0 ? (
@@ -126,7 +126,7 @@ export function AuctionsPage() {
               : "Try another tab or search."}
           </EmptyState>
         ) : (
-          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {rows.map((row, index) => (
               <div key={row.auction.auction_id} className="animate-fade-up" style={{ animationDelay: `${Math.min(index, 8) * 40}ms` }}>
                 <AuctionCard auction={row.auction} price={row.price} bidCount={row.bids} />
@@ -145,8 +145,8 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        "rounded-full border px-3 py-1 text-[13px] font-medium transition-colors",
-        active ? "border-brand bg-brand-soft text-brand-ink" : "border-line text-ink-muted hover:border-line-strong hover:text-ink",
+        "rounded-full border px-3.5 py-1.5 text-[13px] font-semibold transition-colors",
+        active ? "border-brand bg-brand-soft text-brand-ink" : "border-line bg-surface text-ink-muted hover:border-line-strong hover:text-ink",
       )}
     >
       {children}

@@ -135,10 +135,9 @@ export function BidPanel({ state }: { state: AuctionLive }) {
   const urgent = auction.closes_at ? Date.parse(auction.closes_at) - Date.now() < auction.guard_interval_seconds * 1000 : false;
 
   return (
-    <div className="overflow-hidden rounded-3xl border border-line bg-surface shadow-lift">
+    <div className="overflow-hidden rounded-4xl border border-line bg-surface shadow-lift">
       {/* Price */}
-      <div className="relative border-b border-line p-6">
-        <div className="pointer-events-none absolute inset-0 bg-aurora opacity-70" aria-hidden />
+      <div className="bg-wash relative border-b border-line p-6">
         <div className="relative">
           <div className="flex items-center justify-between">
             <p className="eyebrow">{live.price === null ? "Starting price" : "Current bid"}</p>
@@ -149,7 +148,7 @@ export function BidPanel({ state }: { state: AuctionLive }) {
             )}
           </div>
           <div ref={priceRef} className="-mx-2 mt-2 rounded-xl px-2" aria-live="polite" aria-atomic>
-            <p className={cn("tnum text-price font-semibold transition-opacity", pending !== null && "opacity-60")}>
+            <p className={cn("tnum font-display text-price font-bold transition-opacity", pending !== null && "opacity-60")}>
               {formatMoney(shownPrice, currency)}
             </p>
             {pending !== null && (
@@ -159,11 +158,11 @@ export function BidPanel({ state }: { state: AuctionLive }) {
             )}
           </div>
           <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
-            <div className="rounded-xl bg-surface/70 p-3 ring-1 ring-line backdrop-blur">
+            <div className="rounded-2xl bg-surface p-3.5 shadow-card ring-1 ring-line">
               <dt className="text-xs text-ink-faint">Minimum next bid</dt>
               <dd className="tnum mt-0.5 font-semibold">{formatMoney(live.minNext, currency)}</dd>
             </div>
-            <div className="rounded-xl bg-surface/70 p-3 ring-1 ring-line backdrop-blur">
+            <div className="rounded-2xl bg-surface p-3.5 shadow-card ring-1 ring-line">
               <dt className="text-xs text-ink-faint">{biddable ? "Ends in" : auction.state === "SCHEDULED" ? "Opens" : "Status"}</dt>
               <dd className={cn("mt-0.5 font-semibold", urgent && biddable && "text-live")}>
                 {biddable && auction.closes_at ? (
@@ -190,7 +189,7 @@ export function BidPanel({ state }: { state: AuctionLive }) {
       <div className="p-6">
         {!user ? (
           <div className="text-center">
-            <span className="mx-auto grid size-11 place-items-center rounded-2xl bg-brand-soft text-brand-ink">
+            <span className="mx-auto grid size-12 place-items-center rounded-2xl bg-brand-soft text-brand-ink">
               <Lock className="size-5" aria-hidden />
             </span>
             <p className="mt-3 font-semibold">Log in to bid and watch live</p>
@@ -222,7 +221,7 @@ export function BidPanel({ state }: { state: AuctionLive }) {
                 aria-describedby="bid-help"
                 disabled={isSeller || Boolean(user.suspended)}
                 className={cn(
-                  "tnum h-14 w-full rounded-2xl border bg-surface pl-10 pr-4 text-2xl font-semibold tracking-[-0.02em] transition-[border-color,box-shadow] focus:border-brand focus:shadow-focus focus:outline-none disabled:opacity-60",
+                  "tnum h-16 w-full rounded-2xl border bg-surface pl-10 pr-4 font-display text-[28px] font-bold tracking-[-0.03em] transition-[border-color,box-shadow] focus:border-brand focus:shadow-focus focus:outline-none disabled:opacity-60",
                   touched && clientError ? "border-danger" : "border-line-strong",
                 )}
               />
@@ -238,7 +237,7 @@ export function BidPanel({ state }: { state: AuctionLive }) {
                     setTouched(true);
                     setServerError(null);
                   }}
-                  className="tnum rounded-lg border border-line bg-surface-2/60 px-2.5 py-1 text-xs font-medium text-ink-muted transition-colors hover:border-brand/40 hover:text-brand-ink"
+                  className="tnum rounded-full border border-line bg-surface-2/60 px-3 py-1.5 text-xs font-semibold text-ink-muted transition-colors hover:border-brand/40 hover:bg-brand-soft hover:text-brand-ink"
                 >
                   {formatMoney(value, currency)}
                 </button>
@@ -249,7 +248,7 @@ export function BidPanel({ state }: { state: AuctionLive }) {
             </p>
 
             {/* AC-07: the flat fee and the total, before the bid is placed. */}
-            <div className="mt-4 rounded-2xl border border-line bg-surface-2/50 p-4" aria-live="polite">
+            <div className="mt-4 rounded-3xl bg-surface-2/70 p-4" aria-live="polite">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-ink-muted">Your bid</span>
                 <span className="tnum font-medium">{amount !== null ? formatMoney(amount, currency) : "—"}</span>
@@ -268,7 +267,7 @@ export function BidPanel({ state }: { state: AuctionLive }) {
               <div className="my-3 h-px bg-line" />
               <div className="flex items-center justify-between">
                 <span className="text-sm font-semibold">Total if you win</span>
-                <span className="tnum text-lg font-semibold">{quote ? formatMoney(parseMoney(quote.total), quote.currency) : quoting ? "…" : "—"}</span>
+                <span className="tnum font-display text-xl font-bold tracking-[-0.02em]">{quote ? formatMoney(parseMoney(quote.total), quote.currency) : quoting ? "…" : "—"}</span>
               </div>
               {quoteFailed && <p className="mt-2 text-xs text-danger">The fee quote is unavailable; try again before bidding.</p>}
               <p className="mt-2 text-xs text-ink-faint">Only charged if you win. Losing bidders pay nothing. Test mode: no real payment.</p>

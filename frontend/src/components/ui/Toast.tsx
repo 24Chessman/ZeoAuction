@@ -52,8 +52,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             key={toast.id}
             role={toast.tone === "danger" || toast.tone === "outbid" ? "alert" : "status"}
             className={cn(
-              "pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-2xl border bg-surface/95 p-4 shadow-lift backdrop-blur-md animate-toast-in",
-              toast.tone === "outbid" ? "border-live/40" : "border-line",
+              "pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-2xl border bg-surface p-4 shadow-lift animate-toast-in",
+              toast.tone === "outbid" ? "border-brand/60 ring-4 ring-brand/10" : "border-line",
             )}
           >
             <span className="mt-px">{icons[toast.tone ?? "info"]}</span>
