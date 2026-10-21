@@ -10,9 +10,10 @@
 ## Before the demo (T − 60 min)
 
 ```bash
-docker compose down -v && docker compose up -d --build     # fresh DB: 32-, 51-, 61- SQL applied
+docker compose down -v && FRAUD_ALERT_THRESHOLD=0.8 docker compose up -d --build   # fresh DB; demo threshold (segment 4)
 docker compose ps                                          # every service healthy
 MSYS_NO_PATHCONV=1 docker compose exec -T postgres psql -U postgres -d zeoauction -v ON_ERROR_STOP=1 -f /seed/dev-seed.sql
+MSYS_NO_PATHCONV=1 docker compose exec -T postgres psql -U postgres -d zeoauction -v ON_ERROR_STOP=1 -f /seed/demo-mid-sem.sql   # ring accounts + compass listing (segment 4)
 MSYS_NO_PATHCONV=1 docker compose exec -T postgres psql -U postgres -d zeoauction -f /verify/verify-guards.sql
 cd frontend && cp .env.example .env.local                # then set VITE_USE_MOCKS=false to use the stack
 npm run dev
@@ -40,7 +41,7 @@ Last resort: the recorded video.
 | 2c | optional | Naitik | Anti-snipe: a bid in the last 2 minutes extends the close (needs an auction closing during the demo) ⚠ | |
 | 3 | 5 min | Sumit, Jaydip | The auction closes → order INVOICED (winning bid + ₹99.00) → winner clicks **Pay now** → (mock) Checkout → AUTHORIZED → CAPTURED → **IN_ESCROW**. Then `GET /orders/{id}/ledger` as admin: CAPTURE, HOLD, FEE_RETAIN ⚠ | Test mode, no real money, escrow is a simulation. The loser has no invoice (AC-09). The ledger is append-only, and a second RELEASE is rejected by the database |
 | 3b | 1 min | Jaydip | `docker compose stop payment-escrow` during capture → order parks in `AWAITING_CAPTURE_RETRY` → start it → it recovers ⚠ | Deferred, never abandoned |
-| 4 | 2 min | Harshal | Replay the labelled dataset into `bid.events` (`python -m dataset.replay ... --shift-to-now`). `/metrics` on :8011 shows the consumer reading it in order; restart → no re-read ⚠ | The scorer that turns features into alerts is Plan 5 (#55). Say it's **not built yet**, rather than implying an alert |
+| 4 | 2 min | Harshal | `.venv/Scripts/python.exe scripts/demo-shill.py`: ring1 and ring2 bid each other up on the compass from one shared device. The script prints each bid and then the number of `ShillAlert`s published; show the row in `fraud.fraud_alerts` (score, the seven signals, `raised_before_close = true`). Then `docker compose stop fraud-detector`, bid again (bidding is unaffected), start it, and it catches up from its offset ⚠ | v1 measured recall 0.90 at precision 0.93 on the labelled dataset (`docs/fraud/v1-measurement.md`). The demo runs at threshold 0.8 because the UI sends no device fingerprint and fast honest newcomers score 0.75: a known v1 limit, fixed by real account age in Plan 6 |
 | 5 | 3 min | Naitik, Jaydip, Sumit | Code walkthrough: `bid/app/domain/conflict.py` (CAS + replay), `docs/state-machines.md` §1–2, `payment-escrow/app/domain/ledger.py` + `61-payment-razorpay.sql` guards | |
 | – | 5 min | all | Questions. Log evaluator feedback as Jira tickets the same day | |
 
