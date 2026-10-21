@@ -10,22 +10,23 @@ export function AdminKycQueuePage() {
   const { data, error, loading, reload } = useAsync(() => adminKycApi.queue(50, 0), []);
   const now = useNow(30_000);
   const items = data?.items ?? [];
-  const waiting = items.filter((i) => i.state === "SUBMITTED").length;
-  const reviewing = items.filter((i) => i.state === "UNDER_REVIEW").length;
+  const oldest = items[0]?.submitted_at ?? null;
 
   return (
     <div className="mx-auto max-w-page px-4 py-10 sm:px-6">
       <PageHeader
         eyebrow="Administration"
         title="KYC review queue"
-        description="Seller submissions waiting for a decision, oldest first. Every decision and every document view is audited."
+        description="Sellers whose live face check was close to the Aadhaar photo, oldest first. Clear matches verify on their own. Every decision and every photo view is audited."
         actions={<Button variant="secondary" icon={<RefreshCw className="size-4" />} onClick={() => void reload()} loading={loading && Boolean(data)}>Refresh</Button>}
       />
 
-      <div className="mt-8 grid gap-4 sm:grid-cols-3">
-        <Stat label="In the queue" value={data ? items.length : null} />
-        <Stat label="Waiting to start" value={data ? waiting : null} />
-        <Stat label="Under review" value={data ? reviewing : null} />
+      <div className="mt-8 grid gap-4 sm:grid-cols-2">
+        <Stat label="Waiting for a decision" value={data ? items.length : null} />
+        <Card className="p-5">
+          <p className="text-sm text-ink-muted">Oldest waiting</p>
+          {!data ? <Skeleton className="mt-2 h-8 w-24" /> : <p className="mt-1 text-3xl font-semibold tracking-[-0.03em]">{oldest ? timeAgo(oldest, now) : "—"}</p>}
+        </Card>
       </div>
 
       <div className="mt-6">
@@ -34,7 +35,7 @@ export function AdminKycQueuePage() {
         ) : loading && !data ? (
           <Skeleton className="h-64 w-full rounded-2xl" />
         ) : items.length === 0 ? (
-          <EmptyState icon={<Inbox className="size-5" />} title="The queue is empty">New seller submissions will appear here.</EmptyState>
+          <EmptyState icon={<Inbox className="size-5" />} title="The queue is empty">Close face matches will appear here.</EmptyState>
         ) : (
           <Card className="overflow-hidden">
             <Table>

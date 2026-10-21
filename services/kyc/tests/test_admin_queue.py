@@ -7,28 +7,27 @@ from tests.support import bearer
 
 
 def test_admin_routes_need_the_admin_role(harness):
-    _, submission_id = harness.submitted()
+    _, submission_id = harness.in_review()
     response = harness.client.post(f"/api/v1/admin/kyc/{submission_id}/approve",
                                    headers=bearer(uuid4()))
     assert response.status_code == 403
     assert response.json()["code"] == "FORBIDDEN"
 
 
-def test_queue_lists_waiting_submissions_oldest_first(harness):
-    ids = [harness.submitted()[1] for _ in range(3)]
-    harness.admin_post(f"{ids[1]}/start-review")
+def test_the_queue_holds_what_the_face_check_referred_oldest_first(harness):
+    reviewing = [harness.in_review()[1] for _ in range(2)]
+    waiting = harness.submitted()[1]
     page = harness.admin_get("queue").json()
-    assert [item["submission_id"] for item in page["items"]] == ids
-    only_new = harness.admin_get("queue", state="SUBMITTED").json()
-    assert [item["submission_id"] for item in only_new["items"]] == [ids[0], ids[2]]
+    assert [item["submission_id"] for item in page["items"]] == reviewing
+    assert all(item["state"] == "UNDER_REVIEW" for item in page["items"])
+    in_progress = harness.admin_get("queue", state="SUBMITTED").json()
+    assert [item["submission_id"] for item in in_progress["items"]] == [waiting]
     second = harness.admin_get("queue", limit=1, offset=1).json()
-    assert [item["submission_id"] for item in second["items"]] == [ids[1]]
+    assert [item["submission_id"] for item in second["items"]] == [reviewing[1]]
 
 
-def test_full_approval_flow_mirrors_verified_and_audits(harness):
-    user, submission_id = harness.submitted()
-    review = harness.admin_post(f"{submission_id}/start-review")
-    assert review.json()["state"] == "UNDER_REVIEW"
+def test_approving_a_referral_mirrors_verified_and_audits(harness):
+    user, submission_id = harness.in_review()
     approved = harness.admin_post(f"{submission_id}/approve")
     assert approved.status_code == 200
     body = approved.json()
@@ -36,13 +35,12 @@ def test_full_approval_flow_mirrors_verified_and_audits(harness):
     assert body["decided_by"] == str(harness.admin)
     assert harness.repo.mirror.users[user] == ("VERIFIED", 4)
     assert harness.versions.versions[user] == 4  # the seller's old token is now stale
-    actions = [row[3] for row in harness.repo.audit_log]
-    assert actions == ["KYC_START_REVIEW", "KYC_APPROVE"]
-    assert [t.event for t in harness.repo.transitions] == ["submit", "startReview", "approve"]
-    assert all(t.actor_id == harness.admin for t in harness.repo.transitions[1:])
+    assert [row[3] for row in harness.repo.audit_log] == ["KYC_APPROVE"]
+    assert [t.event for t in harness.repo.transitions] == ["submit", "faceReview", "approve"]
+    assert harness.repo.transitions[-1].actor_id == harness.admin
 
 
-def test_approving_without_review_is_an_illegal_transition(harness):
+def test_a_submission_waiting_for_the_face_cannot_be_approved(harness):
     user, submission_id = harness.submitted()
     response = harness.admin_post(f"{submission_id}/approve")
     assert response.status_code == 409
@@ -51,40 +49,48 @@ def test_approving_without_review_is_an_illegal_transition(harness):
     assert harness.repo.audit_log == []
 
 
-def test_reject_requires_a_reason(harness):
+def test_the_start_review_route_is_gone(harness):
     _, submission_id = harness.submitted()
-    harness.admin_post(f"{submission_id}/start-review")
+    assert harness.admin_post(f"{submission_id}/start-review").status_code in (404, 405)
+
+
+def test_reject_requires_a_reason(harness):
+    _, submission_id = harness.in_review()
     assert harness.admin_post(f"{submission_id}/reject", {"reason": "bad"}).status_code == 422
     assert harness.admin_post(f"{submission_id}/reject", {}).status_code == 422
-    response = harness.admin_post(f"{submission_id}/reject",
-                                  {"reason": "Address proof is older than three months."})
+    reason = "The live capture shows a different person."
+    response = harness.admin_post(f"{submission_id}/reject", {"reason": reason})
     assert response.status_code == 200
-    assert response.json()["rejection_reason"] == "Address proof is older than three months."
-    assert harness.repo.audit_log[-1][9] == "Address proof is older than three months."
+    assert response.json()["rejection_reason"] == reason
+    assert harness.repo.audit_log[-1][9] == reason
+
+
+def test_an_admin_rejection_allows_a_new_upload_at_once(harness):
+    user, submission_id = harness.in_review()
+    harness.admin_post(f"{submission_id}/reject", {"reason": "Photo too blurry to compare."})
+    assert harness.me(user).json()["can_resubmit"] is True
+    assert harness.upload(user).status_code == 201
 
 
 def test_suspend_and_reinstate(harness):
     user, submission_id = harness.submitted()
-    harness.admin_post(f"{submission_id}/start-review")
-    harness.admin_post(f"{submission_id}/approve")
+    harness.face(user, submission_id)  # a clear match: VERIFIED without an administrator
     assert harness.admin_post(f"{submission_id}/suspend",
                               {"reason_code": "bad code"}).status_code == 422
     suspended = harness.admin_post(f"{submission_id}/suspend",
-                                   {"reason_code": "DOCUMENT_FORGERY"})
+                                   {"reason_code": "IDENTITY_MISMATCH"})
     assert suspended.json()["state"] == "SUSPENDED"
     assert harness.repo.mirror.users[user][0] == "SUSPENDED"
-    assert harness.repo.audit_log[-1][8] == "DOCUMENT_FORGERY"
+    assert harness.repo.audit_log[-1][8] == "IDENTITY_MISMATCH"
     reinstated = harness.admin_post(f"{submission_id}/reinstate")
     assert reinstated.json()["state"] == "VERIFIED"
     assert harness.repo.mirror.users[user][0] == "VERIFIED"
 
 
-def test_terminal_like_states_refuse_review_actions(harness):
-    _, submission_id = harness.submitted()
-    harness.admin_post(f"{submission_id}/start-review")
+def test_verified_submissions_refuse_review_actions(harness):
+    _, submission_id = harness.in_review()
     harness.admin_post(f"{submission_id}/approve")
-    for action in ("start-review", "approve"):
-        assert harness.admin_post(f"{submission_id}/{action}").status_code == 409
+    assert harness.admin_post(f"{submission_id}/approve").status_code == 409
     assert harness.admin_post(f"{submission_id}/reject",
                               {"reason": "Too late to reject this one."}).status_code == 409
 
@@ -94,16 +100,25 @@ def test_unknown_submission_is_not_found(harness):
     assert harness.admin_get(str(uuid4())).status_code == 404
 
 
-def test_detail_shows_document_metadata_without_urls(harness):
-    _, submission_id = harness.submitted()
+def test_detail_shows_the_aadhaar_summary_and_every_attempt(harness):
+    _, submission_id = harness.in_review()
     body = harness.admin_get(submission_id).json()
-    assert len(body["documents"]) == 2
+    assert body["aadhaar"]["holder_name"] == "Asha Verma"
+    assert body["aadhaar"]["pincode"] == "411001"
+    assert body["aadhaar"]["face_model"] == "fake-engine"
+    assert body["aadhaar"]["reference_faces"] == 1
+    assert len(body["aadhaar"]["signer_sha256"]) == 64
+    assert "reference_embedding" not in body["aadhaar"]
+    (attempt,) = body["face_attempts"]
+    assert attempt["outcome"] == "REVIEW"
+    assert attempt["median_score"] == pytest.approx(0.35)
+    assert {d["doc_type"] for d in body["documents"]} == {"AADHAAR_PHOTO", "FACE_CAPTURE"}
     assert all(len(doc["sha256"]) == 64 for doc in body["documents"])
     assert "url" not in body["documents"][0]
 
 
 def test_document_view_is_a_short_lived_signed_url_and_is_audited(harness):
-    _, submission_id = harness.submitted()
+    _, submission_id = harness.in_review()
     document = harness.admin_get(submission_id).json()["documents"][0]
     response = harness.admin_get(f"{submission_id}/documents/{document['document_id']}/url")
     assert response.status_code == 200
@@ -130,15 +145,27 @@ def test_document_of_another_submission_is_not_found(harness):
 def test_a_racing_admin_gets_a_conflict(harness, monkeypatch):
     from app.adapters.kyc_repo import StaleSubmission
 
-    _, submission_id = harness.submitted()
+    _, submission_id = harness.in_review()
 
     async def lost_race(*args):
         raise StaleSubmission(submission_id)
 
     monkeypatch.setattr(harness.repo, "apply", lost_race)
-    response = harness.admin_post(f"{submission_id}/start-review")
+    response = harness.admin_post(f"{submission_id}/approve")
     assert response.status_code == 409
     assert response.json()["code"] == "CONFLICT"
+
+
+def test_a_deleted_account_is_a_conflict(harness, monkeypatch):
+    from app.adapters.user_mirror import UnknownUser
+
+    _, submission_id = harness.in_review()
+
+    async def gone(*args):
+        raise UnknownUser("deleted")
+
+    monkeypatch.setattr(harness.repo, "apply", gone)
+    assert harness.admin_post(f"{submission_id}/approve").status_code == 409
 
 
 async def test_in_memory_apply_refuses_a_row_that_moved(harness):
@@ -147,10 +174,10 @@ async def test_in_memory_apply_refuses_a_row_that_moved(harness):
     from app.adapters.kyc_repo import StaleSubmission
     from app.domain.verification import plan_transition
 
-    _, submission_id = harness.submitted()
+    _, submission_id = harness.in_review()
     row = next(iter(harness.repo.submissions.values()))
-    transition, updated = plan_transition(row, "startReview", actor_id=harness.admin,
+    transition, updated = plan_transition(row, "approve", actor_id=harness.admin,
                                           reason=None, now=row.submitted_at)
-    harness.repo.submissions[row.id] = replace(row, state="UNDER_REVIEW")
+    harness.repo.submissions[row.id] = replace(row, state="VERIFIED")
     with pytest.raises(StaleSubmission):
         await harness.repo.apply(transition, updated, "ADMIN", None)
