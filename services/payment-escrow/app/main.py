@@ -1,8 +1,8 @@
 """Payment, Fees & Escrow — see services/payment-escrow/README.md."""
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 from fastapi import FastAPI
 
@@ -48,6 +48,7 @@ def build_app(
     port: PaymentPort | None = None,
     publisher: SettlementEventPublisher | None = None,
     jwt_settings: JwtSettings | None = None,
+    clock: Callable[[], datetime] | None = None,
 ) -> FastAPI:
     """Create the service. Tests pass ``repository``; otherwise it is built at start-up."""
     settings = settings or Settings.from_env()
@@ -63,7 +64,8 @@ def build_app(
     window = timedelta(hours=settings.payment_window_hours)
 
     def attach(repo: PaymentRepository, events: SettlementEventPublisher) -> PaymentService:
-        service = PaymentService(repo, payment_port, events, metrics, payment_window=window)
+        kwargs = {"clock": clock} if clock is not None else {}
+        service = PaymentService(repo, payment_port, events, metrics, payment_window=window, **kwargs)
         app.state.payment_service = service
         return service
 

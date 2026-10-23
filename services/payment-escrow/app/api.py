@@ -22,6 +22,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.domain.invoice import Invoice
 from app.domain.orders import Order, SettlementRequest
+from app.domain.reconcile import reconcile_order
 from app.payment_port.razorpay_adapter import to_paise
 from app.service import PaymentService
 from zeo_common import ApiError, format_money, parse_money
@@ -154,6 +155,21 @@ class WebhookAck(BaseModel):
     outcome: Literal["applied", "ignored", "duplicate"]
 
 
+class RefundRequestBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    fault: Literal["BUYER", "SELLER", "PLATFORM"]
+    note: str | None = None
+
+
+class ReconciliationView(BaseModel):
+    order_id: UUID
+    state: str
+    is_valid: bool
+    balance: str
+    errors: list[str]
+
+
 def money(value) -> str:
     return format_money(value)
 
@@ -283,3 +299,79 @@ async def get_ledger(order_id: UUID, _: AdminPrincipal,
         )
         for entry in await service.ledger(order_id)
     ]
+
+
+@router.post("/orders/{order_id}/ship", response_model=OrderView, operation_id="shipOrder")
+async def ship_order(order_id: UUID, principal: CurrentPrincipal, service: Service) -> OrderView:
+    """O6: seller marks item shipped; opens the protection window."""
+    order = await service.ship(principal, order_id)
+    return order_view(order, await service.repo.invoice(order.id))
+
+
+@router.post("/orders/{order_id}/confirm-receipt", response_model=OrderView,
+             operation_id="confirmReceipt")
+async def confirm_receipt(order_id: UUID, principal: CurrentPrincipal,
+                          service: Service) -> OrderView:
+    """O9: buyer confirms receipt; funds release immediately (trigger a)."""
+    order = await service.confirm_receipt(principal, order_id)
+    return order_view(order, await service.repo.invoice(order.id))
+
+
+@router.post("/internal/orders/{order_id}/release", response_model=OrderView,
+             operation_id="internalReleaseOrder", dependencies=[InternalCaller],
+             tags=["internal"])
+async def internal_release_order(
+    order_id: UUID,
+    service: Service,
+    trigger: str = "sweep_expiry",
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+) -> OrderView:
+    """O10/O11: internal release trigger (sweep expiry or admin adjudication)."""
+    order = await service.release(order_id, trigger=trigger, idempotency_key=idempotency_key)
+    return order_view(order, await service.repo.invoice(order.id))
+
+
+@router.post("/internal/orders/{order_id}/freeze", response_model=OrderView,
+             operation_id="internalFreezeOrder", dependencies=[InternalCaller],
+             tags=["internal"])
+async def internal_freeze_order(
+    order_id: UUID,
+    service: Service,
+    reason: str = "dispute",
+) -> OrderView:
+    """O7/O8: internal escrow freeze trigger upon dispute creation or fraud alert."""
+    order = await service.freeze(order_id, reason=reason)
+    return order_view(order, await service.repo.invoice(order.id))
+
+
+@router.post("/internal/orders/{order_id}/refund", response_model=OrderView,
+             operation_id="internalRefundOrder", dependencies=[InternalCaller],
+             tags=["internal"])
+async def internal_refund_order(
+    order_id: UUID,
+    body: RefundRequestBody,
+    service: Service,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+) -> OrderView:
+    """O12: internal refund trigger upon admin adjudication with fault."""
+    order = await service.refund(order_id, fault=body.fault, note=body.note,
+                                 idempotency_key=idempotency_key)
+    return order_view(order, await service.repo.invoice(order.id))
+
+
+@router.get("/orders/{order_id}/reconciliation", response_model=ReconciliationView,
+            operation_id="reconcileOrder")
+async def reconcile_order_endpoint(order_id: UUID, _: AdminPrincipal,
+                                   service: Service) -> ReconciliationView:
+    """Admin endpoint to run ledger reconciliation against the invariants."""
+    order, _ = await service.order_for(_, order_id)
+    entries = await service.ledger(order_id)
+    report = reconcile_order(order, entries)
+    return ReconciliationView(
+        order_id=report.order_id,
+        state=report.state,
+        is_valid=report.is_valid,
+        balance=money(report.balance),
+        errors=report.errors,
+    )
+

@@ -43,14 +43,23 @@ from app.adapters.repository import PaymentRepository, StaleOrder
 from app.domain import orders as machine
 from app.domain.fees import FeeError, FeeQuote, quote
 from app.domain.invoice import Invoice, issue_invoice
-from app.domain.ledger import LedgerEntry, LedgerError, capture_entry, hold_entries
+from app.domain.ledger import (
+    EntryType,
+    LedgerEntry,
+    LedgerError,
+    capture_entry,
+    hold_entries,
+)
 from app.domain.orders import (
     CAPTURABLE_STATES,
     IllegalOrderTransition,
     Order,
     OrderValidationError,
     SettlementRequest,
+    WindowClosedError,
 )
+from app.domain.refund import Fault, execute_refund
+from app.domain.release import ReleaseTrigger, execute_release
 from app.domain.saga import (
     REVERSE_CAPTURE,
     SagaStepRecord,
@@ -176,6 +185,11 @@ class PaymentService:
         if principal.user_id != order.buyer_id:
             raise ApiError("FORBIDDEN", "Only the winning bidder can pay this order", 403)
 
+    @staticmethod
+    def _check_seller(order: Order, principal: Principal) -> None:
+        if not (principal.is_admin or principal.user_id == order.seller_id):
+            raise ApiError("FORBIDDEN", "Only the seller can perform this action", 403)
+
     # ------------------------------------------------------------------ reads
 
     async def quote(self, bid_amount: Decimal) -> FeeQuote:
@@ -274,9 +288,123 @@ class PaymentService:
         try:
             self.port.verify_checkout(provider_order_id, payment_id, signature)
         except InvalidPaymentRequest as exc:
-            raise ApiError("PAYMENT_SIGNATURE_INVALID", "The payment signature is invalid",
-                           400) from exc
+            raise ApiError("PAYMENT_SIGNATURE_INVALID", "The payment signature is invalid", 400) from exc
         return await self._on_authorized(order, payment_id)
+
+    async def ship(self, principal: Principal, order_id: UUID) -> Order:
+        """O6: seller marks item shipped; opens the protection window."""
+        order = await self._load(order_id)
+        self._check_seller(order, principal)
+        try:
+            shipped = machine.mark_shipped(order, self.clock(), window_days=7)
+        except IllegalOrderTransition as exc:
+            raise ApiError("CONFLICT", str(exc), 409) from exc
+        saved = await self._save(order, shipped)
+        await self._publish(saved, "SHIPPED")
+        return saved
+
+    async def confirm_receipt(self, principal: Principal, order_id: UUID) -> Order:
+        """O9: buyer confirms receipt; release funds to seller immediately."""
+        order = await self._load(order_id)
+        self._check_buyer(order, principal)
+        if order.state == "RELEASED":
+            return order
+        try:
+            existing = await self.repo.ledger(order.id)
+            released, entry = execute_release(order, ReleaseTrigger.BUYER_CONFIRM, self.clock(), existing)
+        except (IllegalOrderTransition, LedgerError) as exc:
+            raise ApiError("CONFLICT", str(exc), 409) from exc
+
+        try:
+            await self.port.payout(
+                order.capture_ref or "", order.seller_id,
+                order.captured_total - order.convenience_fee,
+                order.currency, entry.idempotency_key,
+            )
+        except Exception as exc:
+            logger.warning("Provider payout for %s: %s", order.id, exc)
+
+        saved = await self._save(order, released, entries=[entry])
+        await self._publish(saved, "RELEASED")
+        return saved
+
+    async def release(self, order_id: UUID, trigger: str = "sweep_expiry",
+                      idempotency_key: str | None = None) -> Order:
+        """O10/O11: release funds upon sweep expiry or admin adjudication in seller's favour."""
+        order = await self._load(order_id)
+        if order.state == "RELEASED":
+            return order
+        existing = await self.repo.ledger(order.id)
+        if any(e.entry_type == EntryType.RELEASE for e in existing):
+            return order
+        try:
+            rel_trigger = (
+                ReleaseTrigger.SWEEP_EXPIRY if trigger == "sweep_expiry"
+                else ReleaseTrigger.ADJUDICATE_SELLER
+            )
+            released, entry = execute_release(order, rel_trigger, self.clock(), existing)
+        except (IllegalOrderTransition, LedgerError) as exc:
+            raise ApiError("CONFLICT", str(exc), 409) from exc
+
+        try:
+            await self.port.payout(
+                order.capture_ref or "", order.seller_id,
+                order.captured_total - order.convenience_fee,
+                order.currency, entry.idempotency_key,
+            )
+        except Exception as exc:
+            logger.warning("Provider payout for %s: %s", order.id, exc)
+
+        saved = await self._save(order, released, entries=[entry])
+        await self._publish(saved, "RELEASED")
+        return saved
+
+    async def freeze(self, order_id: UUID, reason: str = "dispute") -> Order:
+        """O7/O8: freeze escrow upon buyer dispute or fraud alert."""
+        order = await self._load(order_id)
+        if order.state == "DISPUTED":
+            return order
+        try:
+            if reason == "fraud":
+                frozen = machine.fraud_dispute(order, self.clock())
+            else:
+                frozen = machine.raise_dispute(order, self.clock())
+        except WindowClosedError as exc:
+            raise ApiError("WINDOW_CLOSED", str(exc), 409) from exc
+        except IllegalOrderTransition as exc:
+            raise ApiError("CONFLICT", str(exc), 409) from exc
+
+        saved = await self._save(order, frozen)
+        await self._publish(saved, "DISPUTED")
+        return saved
+
+    async def refund(self, order_id: UUID, fault: str, note: str | None = None,
+                     idempotency_key: str | None = None) -> Order:
+        """O12: admin resolves dispute in buyer's favour; refund funds with fee treatment by fault."""
+        order = await self._load(order_id)
+        if order.state == "REFUNDED":
+            return order
+        existing = await self.repo.ledger(order.id)
+        if any(e.entry_type == EntryType.REFUND for e in existing):
+            return order
+        try:
+            fault_val = Fault(fault)
+            refunded, entries = execute_refund(order, fault_val, self.clock(), existing, note=note)
+        except (IllegalOrderTransition, LedgerError, ValueError) as exc:
+            raise ApiError("CONFLICT", str(exc), 409) from exc
+
+        refund_amount = order.winning_bid_amount if fault_val == Fault.BUYER else order.captured_total
+        try:
+            await self.port.refund(
+                order.capture_ref or "", refund_amount, order.currency,
+                order.idempotency_key("refund"),
+            )
+        except Exception as exc:
+            logger.warning("Provider refund for %s: %s", order.id, exc)
+
+        saved = await self._save(order, refunded, entries=entries)
+        await self._publish(saved, "REFUNDED")
+        return saved
 
     async def handle_webhook(self, provider: str, payload: bytes,
                              headers: Mapping[str, str]) -> str:

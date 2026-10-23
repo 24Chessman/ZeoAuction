@@ -45,6 +45,14 @@ TRANSITIONS: dict[tuple[str, str], str] = {
     ("compensateS1", "AWAITING_CAPTURE_RETRY"): "CANCELLED",            # O4
     ("compensateS2", "CAPTURED"): "CANCELLED",                          # O4a (#63)
     ("hold", "CAPTURED"): "IN_ESCROW",                                  # O5 (S3, S4)
+    ("markShipped", "IN_ESCROW"): "SHIPPED",                            # O6
+    ("raiseDispute", "SHIPPED"): "DISPUTED",                            # O7
+    ("fraudDispute", "IN_ESCROW"): "DISPUTED",                          # O8
+    ("fraudDispute", "SHIPPED"): "DISPUTED",                            # O8
+    ("confirmReceipt", "SHIPPED"): "RELEASED",                          # O9
+    ("sweepExpiry", "SHIPPED"): "RELEASED",                             # O10
+    ("adjudicateSeller", "DISPUTED"): "RELEASED",                       # O11
+    ("adjudicateBuyer", "DISPUTED"): "REFUNDED",                        # O12
 }
 
 MAX_CAPTURE_BACKOFF = timedelta(minutes=5)
@@ -59,6 +67,10 @@ class IllegalOrderTransition(Exception):
 
 class OrderValidationError(ValueError):
     pass
+
+
+class WindowClosedError(Exception):
+    """The protection window for disputing this order has closed (AC-11)."""
 
 
 @dataclass(frozen=True)
@@ -195,3 +207,42 @@ def cancel(order: Order, now: datetime) -> Order:
 def cancel_after_capture(order: Order, now: datetime) -> Order:
     """O4a: the capture was reversed at the provider; the order ends CANCELLED."""
     return _move(order, "compensateS2", now)
+
+
+def mark_shipped(order: Order, now: datetime, window_days: int = 7) -> Order:
+    """O6: seller marks item shipped; opens the protection window."""
+    ends_at = now + timedelta(days=window_days)
+    return _move(order, "markShipped", now, shipped_at=now, protection_window_ends_at=ends_at)
+
+
+def raise_dispute(order: Order, now: datetime) -> Order:
+    """O7: buyer raises dispute during open protection window; freezes escrow."""
+    if order.protection_window_ends_at is not None and now >= order.protection_window_ends_at:
+        raise WindowClosedError(f"protection window expired at {order.protection_window_ends_at}")
+    return _move(order, "raiseDispute", now)
+
+
+def fraud_dispute(order: Order, now: datetime) -> Order:
+    """O8: fraud detector flagged auction; freezes escrow."""
+    return _move(order, "fraudDispute", now)
+
+
+def confirm_receipt(order: Order, now: datetime) -> Order:
+    """O9: buyer confirms receipt; release funds immediately."""
+    return _move(order, "confirmReceipt", now)
+
+
+def sweep_expiry(order: Order, now: datetime) -> Order:
+    """O10: protection window expired with no dispute; release funds."""
+    return _move(order, "sweepExpiry", now)
+
+
+def adjudicate_seller(order: Order, now: datetime) -> Order:
+    """O11: admin resolves dispute in seller's favour; release funds."""
+    return _move(order, "adjudicateSeller", now)
+
+
+def adjudicate_buyer(order: Order, now: datetime) -> Order:
+    """O12: admin resolves dispute in buyer's favour; refund funds."""
+    return _move(order, "adjudicateBuyer", now)
+
