@@ -55,7 +55,12 @@ def alert_id_for(auction_id: str, bidder_id: str) -> uuid.UUID:
     return uuid.uuid5(_ALERT_NAMESPACE, f"{auction_id}:{bidder_id}")
 
 
-def build_shill_alert(decision: AlertDecision, raised_at: datetime) -> dict[str, Any]:
+def build_shill_alert(
+    decision: AlertDecision,
+    raised_at: datetime,
+    *,
+    ring_id: str | uuid.UUID | None = None,
+) -> dict[str, Any]:
     if decision.auction_closes_at is None:
         raise ValueError("an alert needs the auction's close time")
     trigger = decision.trigger.features
@@ -63,7 +68,7 @@ def build_shill_alert(decision: AlertDecision, raised_at: datetime) -> dict[str,
         "alert_id": str(alert_id_for(decision.auction_id, trigger.bidder_id)),
         "schema_version": SCHEMA_VERSION,
         "auction_id": decision.auction_id,
-        "ring_id": None,  # ring clustering is #55 (Plan 6)
+        "ring_id": str(ring_id) if ring_id is not None else None,
         "score": decision.score,
         "signals": decision.trigger.signals.evidence(),
         "suspect_bidder_ids": list(decision.suspects),
@@ -96,7 +101,9 @@ class AlertPublisher:
         self.clock = clock
 
     async def publish(self, decision: AlertDecision,
-                      raised_at: datetime | None = None) -> AlertOutcome:
+                      raised_at: datetime | None = None,
+                      *,
+                      ring_id: str | uuid.UUID | None = None) -> AlertOutcome:
         """Store the alert, and publish it if it precedes the close. ``raised_at`` defaults to
         now; a replay of history passes the bid's own time instead."""
         if decision.auction_closes_at is None:
@@ -104,7 +111,7 @@ class AlertPublisher:
             logger.warning("No close time on %s; alert dropped", decision.auction_id)
             return AlertOutcome.NO_CLOSE
         raised_at = raised_at or self.clock()
-        alert = build_shill_alert(decision, raised_at)
+        alert = build_shill_alert(decision, raised_at, ring_id=ring_id)
         try:
             must_precede_close(raised_at, decision.auction_closes_at)
         except LateAlertError as late:
