@@ -19,7 +19,9 @@ the table names. Either way nothing changes.
 | Method and path | Who | Purpose |
 |---|---|---|
 | `POST /api/v1/auctions` | **Listing gate** | Create a `DRAFT`. The seller is the token's subject; a `seller_id` in the body is refused |
-| `GET /api/v1/auctions/{id}` | Public | Read a listing |
+| `GET /api/v1/auctions/{id}` | Public | Read a listing, with its photos (`images`: signed URLs valid for `LISTING_IMAGE_URL_TTL_SECONDS`) |
+| `POST /api/v1/auctions/{id}/images` | **Listing gate**, the seller | Multipart `image`: a JPEG, PNG or WebP photo (sniffed by bytes, ≤ 5 MB, at most 6), while `DRAFT` or `SCHEDULED`. Stored in the `listing-images` bucket (`33-auction-images.sql`) |
+| `DELETE /api/v1/auctions/{id}/images/{image_id}` | **Listing gate**, the seller | Remove a photo, same states |
 | `POST /api/v1/auctions/{id}/publish` | **Listing gate**, the seller | A1: `DRAFT` → `SCHEDULED`; needs `opens_at` (not in the past) and `closes_at` |
 | `POST /api/v1/auctions/{id}/cancel` | The seller or an admin | A8: `DRAFT`/`SCHEDULED` → `CANCELLED`, only before any bid |
 | `POST /api/v1/auctions/{id}/events` | Admin | Operator override of `open`, `close`, `drained`, `settle`; the table still applies |
@@ -63,6 +65,8 @@ Each write uses optimistic locking on `version` and records the transition in th
 | Variable | Default | Meaning |
 |---|---|---|
 | `AUCTION_REPOSITORY` | `postgres` | `memory` runs without a database (no timer, consumer or Kafka) |
+| `AUCTION_STORAGE` | `s3` | Listing photos in the `listing-images` bucket (`S3_*` variables); `memory` keeps them in the process |
+| `LISTING_IMAGE_URL_TTL_SECONDS` | `300` | Lifetime of a photo's signed URL (at most 300) |
 | `AUCTION_PUBLISHER` | `kafka` | `memory` keeps events in process |
 | `CONSUME_BID_EVENTS` | `true` | Anti-snipe and leader tracking |
 | `CHECK_TOKEN_FRESHNESS` | `true` | Listing gate checks `tv:{user_id}` in Redis |

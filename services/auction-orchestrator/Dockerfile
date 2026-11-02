@@ -11,7 +11,7 @@ WORKDIR /srv
 RUN groupadd --system app && useradd --system --gid app app
 
 COPY libs/zeo-common /tmp/zeo-common
-RUN pip install /tmp/zeo-common && rm -rf /tmp/zeo-common
+RUN pip install --no-deps /tmp/zeo-common && rm -rf /tmp/zeo-common
 
 COPY services/auction-orchestrator/requirements.txt ./requirements.txt
 RUN pip install -r requirements.txt

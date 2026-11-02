@@ -1,4 +1,5 @@
-"""Auction Orchestration use cases: listing, lifecycle transitions, timers, bids, settlement.
+"""Auction Orchestration use cases: listing, photos, lifecycle transitions, timers, bids,
+settlement.
 
 Every transition goes through :func:`app.domain.lifecycle.transition`, is saved with the
 version check, recorded in ``auction_state_transitions``, and then published to
@@ -15,16 +16,18 @@ from uuid import UUID, uuid4
 
 from prometheus_client import CollectorRegistry, Counter
 
-from app.adapters.auction_repo import AuctionRepository, StaleAuction
+from app.adapters.auction_repo import AuctionRepository, ImageSlotTaken, StaleAuction
 from app.adapters.kafka_producer import AuctionEventPublisher, build_state_changed
 from app.adapters.payment_client import PaymentClient, PaymentUnavailable, SettlementRefused
 from app.adapters.payment_events import SettlementStep
 from app.domain.anti_snipe import AcceptedBid, apply_bid
 from app.domain.auction import Auction, AuctionValidationError, new_draft
+from app.domain.images import ImageInvalid, ImagesLocked, ListingImage, check_editable, new_image
 from app.domain.lifecycle import SYSTEM, Actor, GuardFailed, IllegalTransition, transition
 from app.domain.settlement import NotSettleable, record_order, settlement_request
 from zeo_common import ApiError
 from zeo_common.auth import Principal
+from zeo_common.storage import MAX_SIGNED_URL_TTL, InMemoryObjectStore, ObjectStore, StorageError
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +90,8 @@ class AuctionService:
         drain_grace: timedelta = timedelta(seconds=5),
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
         payment: PaymentClient | None = None,
+        images: ObjectStore | None = None,
+        image_url_ttl_seconds: int = MAX_SIGNED_URL_TTL,
     ) -> None:
         self.repo = repo
         self.publisher = publisher
@@ -96,6 +101,9 @@ class AuctionService:
         # None where settlement is not wired (local runs without Payment): auctions then stay
         # CLOSED until an administrator settles them.
         self.payment = payment
+        # Listing photos (bucket listing-images), read through signed URLs only.
+        self.images = images or InMemoryObjectStore("listing-images")
+        self.image_url_ttl_seconds = image_url_ttl_seconds
 
     async def load(self, auction_id: UUID) -> Auction:
         auction = await self.repo.get(auction_id)
@@ -146,6 +154,62 @@ class AuctionService:
             return await self._apply(before, event, actor_of(principal))
         except (IllegalTransition, GuardFailed, StaleAuction) as exc:
             raise to_api_error(exc) from exc
+
+    # ------------------------------------------------------------------ photos
+
+    async def photos(self, auction: Auction) -> list[tuple[ListingImage, str]]:
+        """The auction's photos with a fresh signed URL each, in display order."""
+        return [(image, self.images.signed_url(image.object_key, self.image_url_ttl_seconds))
+                for image in await self.repo.images(auction.id)]
+
+    async def _editable(self, principal: Principal, auction_id: UUID) -> Auction:
+        auction = await self.load(auction_id)
+        if auction.seller_id != principal.user_id:
+            raise ApiError("FORBIDDEN", "Only the seller can change this auction's photos", 403)
+        try:
+            check_editable(auction)
+        except ImagesLocked as exc:
+            raise ApiError("CONFLICT", str(exc), 409, {"state": exc.state}) from exc
+        return auction
+
+    async def add_photo(self, principal: Principal, auction_id: UUID, data: bytes) -> Auction:
+        auction = await self._editable(principal, auction_id)
+        try:
+            image = new_image(image_id=uuid4(), auction=auction, data=data,
+                              existing=await self.repo.images(auction.id), now=self.clock())
+        except ImageInvalid as exc:
+            raise ApiError("VALIDATION_ERROR", str(exc), 422,
+                           {"field": "image", "reason": exc.reason}) from exc
+        try:
+            await self.images.put(image.object_key, data, image.mime_type)
+        except StorageError as exc:
+            raise ApiError("SERVICE_UNAVAILABLE", "Photo storage is unavailable; try again",
+                           503) from exc
+        try:
+            await self.repo.add_image(image)
+        except BaseException as exc:
+            await self._discard(image)
+            if isinstance(exc, ImageSlotTaken):
+                raise ApiError("CONFLICT", "Another photo upload is in progress; retry",
+                               409) from exc
+            raise
+        return auction
+
+    async def remove_photo(self, principal: Principal, auction_id: UUID,
+                           image_id: UUID) -> Auction:
+        auction = await self._editable(principal, auction_id)
+        image = await self.repo.remove_image(auction.id, image_id)
+        if image is None:
+            raise ApiError("NOT_FOUND", f"Photo {image_id} does not exist", 404)
+        await self._discard(image)
+        return auction
+
+    async def _discard(self, image: ListingImage) -> None:
+        """Best-effort removal; an orphaned object costs storage, never correctness."""
+        try:
+            await self.images.delete(image.object_key)
+        except StorageError:
+            logger.warning("Could not remove listing photo %s", image.id)
 
     # ------------------------------------------------------------------ platform
 

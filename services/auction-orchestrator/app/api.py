@@ -6,6 +6,10 @@ VERIFIED with ``SELLER_NOT_VERIFIED``, or who is suspended with ``ACCOUNT_SUSPEN
 also refuses tokens minted before a KYC status change (``TOKEN_STALE``), so an approval or a
 suspension applies at once. No request calls the KYC service (ADR-0005).
 
+The seller adds listing photos (``POST /auctions/{id}/images``, multipart ``image``) and removes
+them while the auction is DRAFT or SCHEDULED. Every auction view lists its photos with signed
+URLs that expire after a few minutes; the client re-reads the auction for fresh ones.
+
 ``POST /auctions/{id}/events`` is the administrators' operator override (for example, opening
 an auction early in a demo). The platform's own timer and the anti-snipe consumer drive the
 lifecycle otherwise.
@@ -15,10 +19,11 @@ from datetime import UTC, datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, File, Request, UploadFile
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.domain.auction import Auction
+from app.domain.images import MAX_IMAGE_BYTES, ListingImage
 from app.service import AuctionService, Draft
 from zeo_common import format_money, parse_money
 from zeo_common.auth import AdminPrincipal, CurrentPrincipal
@@ -61,6 +66,13 @@ class TransitionRequest(BaseModel):
     event: OperatorEvent
 
 
+class ImageView(BaseModel):
+    image_id: UUID
+    url: str  # signed, short-lived; never stored by the client
+    mime_type: str
+    position: int
+
+
 class AuctionView(BaseModel):
     auction_id: UUID
     seller_id: UUID
@@ -80,6 +92,7 @@ class AuctionView(BaseModel):
     extension_seconds: int
     winning_bid_id: UUID | None
     version: int
+    images: list[ImageView]
 
 
 class AuctionStateView(BaseModel):
@@ -95,7 +108,7 @@ class AuctionStateView(BaseModel):
     as_of: datetime
 
 
-def to_view(auction: Auction) -> AuctionView:
+def to_view(auction: Auction, photos: list[tuple[ListingImage, str]]) -> AuctionView:
     return AuctionView(
         auction_id=auction.id,
         seller_id=auction.seller_id,
@@ -117,7 +130,13 @@ def to_view(auction: Auction) -> AuctionView:
         extension_seconds=auction.extension_seconds,
         winning_bid_id=auction.winning_bid_id,
         version=auction.version,
+        images=[ImageView(image_id=image.id, url=url, mime_type=image.mime_type,
+                          position=image.position) for image, url in photos],
     )
+
+
+async def view(service: AuctionService, auction: Auction) -> AuctionView:
+    return to_view(auction, await service.photos(auction))
 
 
 @router.post("/auctions", status_code=201, response_model=AuctionView)
@@ -134,12 +153,12 @@ async def create_auction(
         opens_at=body.opens_at,
         closes_at=body.closes_at,
     )
-    return to_view(await service.create(seller, draft))
+    return to_view(await service.create(seller, draft), [])
 
 
 @router.get("/auctions/{auction_id}", response_model=AuctionView)
 async def get_auction(auction_id: UUID, service: Service) -> AuctionView:
-    return to_view(await service.load(auction_id))
+    return await view(service, await service.load(auction_id))
 
 
 @router.post("/auctions/{auction_id}/publish", response_model=AuctionView)
@@ -147,7 +166,7 @@ async def publish_auction(
     auction_id: UUID, seller: VerifiedSeller, service: Service
 ) -> AuctionView:
     """A1: DRAFT -> SCHEDULED. Seller only, through the listing gate."""
-    return to_view(await service.apply(seller, auction_id, "publish"))
+    return await view(service, await service.apply(seller, auction_id, "publish"))
 
 
 @router.post("/auctions/{auction_id}/cancel", response_model=AuctionView)
@@ -155,7 +174,7 @@ async def cancel_auction(
     auction_id: UUID, principal: CurrentPrincipal, service: Service
 ) -> AuctionView:
     """A8: DRAFT or SCHEDULED -> CANCELLED. The seller or an administrator, before any bid."""
-    return to_view(await service.apply(principal, auction_id, "cancel"))
+    return await view(service, await service.apply(principal, auction_id, "cancel"))
 
 
 @router.post("/auctions/{auction_id}/events", response_model=AuctionView)
@@ -163,7 +182,26 @@ async def apply_auction_event(
     auction_id: UUID, body: TransitionRequest, admin: AdminPrincipal, service: Service
 ) -> AuctionView:
     """Operator override of a timer or settlement event; the table still applies."""
-    return to_view(await service.apply(admin, auction_id, body.event))
+    return await view(service, await service.apply(admin, auction_id, body.event))
+
+
+@router.post("/auctions/{auction_id}/images", status_code=201, response_model=AuctionView)
+async def add_auction_image(
+    auction_id: UUID,
+    image: Annotated[UploadFile, File(description="A JPEG, PNG or WebP photo, at most 5 MB")],
+    seller: VerifiedSeller,
+    service: Service,
+) -> AuctionView:
+    """Attach a listing photo (at most six). Seller only, while DRAFT or SCHEDULED."""
+    data = await image.read(MAX_IMAGE_BYTES + 1)  # one byte over is enough to refuse it
+    return await view(service, await service.add_photo(seller, auction_id, data))
+
+
+@router.delete("/auctions/{auction_id}/images/{image_id}", response_model=AuctionView)
+async def remove_auction_image(
+    auction_id: UUID, image_id: UUID, seller: VerifiedSeller, service: Service
+) -> AuctionView:
+    return await view(service, await service.remove_photo(seller, auction_id, image_id))
 
 
 @router.get("/auctions/{auction_id}/state", response_model=AuctionStateView)

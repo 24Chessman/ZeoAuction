@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from zeo_common.settings import env_bool, env_float, env_str
+from zeo_common.settings import env_bool, env_float, env_int, env_str
 
 # LOCAL DEVELOPMENT ONLY; must equal payment-escrow's. Hosted: INTERNAL_SERVICE_TOKEN.
 DEV_INTERNAL_TOKEN = "zeo-dev-internal-token-not-for-production"  # noqa: S105
@@ -32,6 +32,10 @@ class Settings:
     internal_token: str = DEV_INTERNAL_TOKEN
     # Consume payment.events and apply A7 settle on HELD (needs Kafka).
     consume_payment_events: bool = False
+    # Listing photos: "s3" (bucket listing-images) in Compose and on Render; "memory" otherwise.
+    storage: str = "memory"
+    # Signed photo URLs; listing photos are public content, so the longest TTL allowed.
+    image_url_ttl_seconds: int = 300
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -52,4 +56,6 @@ class Settings:
             payment_service_url=env_str("PAYMENT_SERVICE_URL", "http://localhost:8006"),
             internal_token=env_str("INTERNAL_SERVICE_TOKEN", DEV_INTERNAL_TOKEN),
             consume_payment_events=env_bool("CONSUME_PAYMENT_EVENTS", True),
+            storage=env_str("AUCTION_STORAGE", "s3"),
+            image_url_ttl_seconds=env_int("LISTING_IMAGE_URL_TTL_SECONDS", 300),
         )

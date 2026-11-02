@@ -5,13 +5,20 @@ version it read, and 0 rows changed means another writer won, so the caller re-r
 re-evaluates its guard (:class:`StaleAuction`). Transitions are recorded in the append-only
 ``auction_state_transitions`` table in the same transaction (rule 2). Recording a bid that
 does not change the state (:meth:`record_bid`) writes no transition row.
+
+Listing photos (``auction_images``) are rows of their own: adding or removing one is not a
+transition and does not touch the auction's ``version``. Two uploads racing for the same slot
+are separated by the ``(auction_id, position)`` unique constraint (:class:`ImageSlotTaken`).
 """
 
 from datetime import datetime, timedelta
 from typing import Any, Protocol
 from uuid import UUID
 
+import asyncpg
+
 from app.domain.auction import Auction
+from app.domain.images import ListingImage
 
 _COLUMNS = (
     "id, seller_id, title, description, category, starting_price, reserve_price, currency, "
@@ -24,6 +31,7 @@ _INSERT_TRANSITION = (
     "INSERT INTO auction_state_transitions (auction_id, event, from_state, to_state, actor_id, at) "
     "VALUES ($1, $2, $3, $4, $5, $6)"
 )
+_IMAGE_COLUMNS = "id, auction_id, object_key, position, mime_type, size_bytes, uploaded_at"
 # Every column a transition or a bid record may change; the rest are fixed at creation.
 _UPDATE = (
     "UPDATE auctions SET state = $1, opens_at = $2, closes_at = $3, original_closes_at = $4, "
@@ -35,6 +43,10 @@ _UPDATE = (
 
 class StaleAuction(Exception):
     """Another transition won the race; re-read and re-evaluate the guard."""
+
+
+class ImageSlotTaken(Exception):
+    """Another upload took the same position first; re-read the photos and retry."""
 
 
 class AuctionRepository(Protocol):
@@ -59,6 +71,14 @@ class AuctionRepository(Protocol):
         """CLOSED auctions with a winner whose order Payment has not opened yet."""
         ...
 
+    async def images(self, auction_id: UUID) -> list[ListingImage]:
+        """The auction's photos in display order."""
+        ...
+
+    async def add_image(self, image: ListingImage) -> None: ...
+
+    async def remove_image(self, auction_id: UUID, image_id: UUID) -> ListingImage | None: ...
+
 
 def due_event(auction: Auction, now: datetime, drain_grace: timedelta) -> str | None:
     """The timer event an auction is waiting for, if its moment has come (A2, A5, A6)."""
@@ -77,6 +97,7 @@ class InMemoryAuctionRepository:
     def __init__(self) -> None:
         self.auctions: dict[UUID, Auction] = {}
         self.transitions: list[tuple[UUID, str, str | None, str, UUID | None]] = []
+        self.photos: dict[UUID, ListingImage] = {}
 
     async def add(self, auction: Auction) -> None:
         self.auctions[auction.id] = auction
@@ -115,6 +136,21 @@ class InMemoryAuctionRepository:
     async def awaiting_settlement(self, limit: int) -> list[Auction]:
         waiting = [a for a in self.auctions.values() if a.awaiting_settlement]
         return sorted(waiting, key=lambda a: a.updated_at)[:limit]
+
+    async def images(self, auction_id: UUID) -> list[ListingImage]:
+        found = [i for i in self.photos.values() if i.auction_id == auction_id]
+        return sorted(found, key=lambda i: i.position)
+
+    async def add_image(self, image: ListingImage) -> None:
+        if any(i.position == image.position for i in await self.images(image.auction_id)):
+            raise ImageSlotTaken(str(image.auction_id))
+        self.photos[image.id] = image
+
+    async def remove_image(self, auction_id: UUID, image_id: UUID) -> ListingImage | None:
+        image = self.photos.get(image_id)
+        if image is None or image.auction_id != auction_id:
+            return None
+        return self.photos.pop(image_id)
 
     def lifecycle(self, auction_id: UUID) -> list[str]:
         """The recorded events of one auction, for tests."""
@@ -216,3 +252,33 @@ class PostgresAuctionRepository:
                 limit,
             )
         return [_row_to_auction(row) for row in rows]
+
+    async def images(self, auction_id: UUID) -> list[ListingImage]:
+        async with self.pool.acquire() as connection:
+            rows = await connection.fetch(
+                f"SELECT {_IMAGE_COLUMNS} FROM auction_images "  # noqa: S608 - constant columns
+                "WHERE auction_id = $1 ORDER BY position",
+                auction_id,
+            )
+        return [ListingImage(**dict(row)) for row in rows]
+
+    async def add_image(self, image: ListingImage) -> None:
+        async with self.pool.acquire() as connection:
+            try:
+                await connection.execute(
+                    f"INSERT INTO auction_images ({_IMAGE_COLUMNS}) "  # noqa: S608 - constant
+                    "VALUES ($1, $2, $3, $4, $5, $6, $7)",
+                    image.id, image.auction_id, image.object_key, image.position,
+                    image.mime_type, image.size_bytes, image.uploaded_at,
+                )
+            except asyncpg.UniqueViolationError as exc:  # (auction_id, position)
+                raise ImageSlotTaken(str(image.auction_id)) from exc
+
+    async def remove_image(self, auction_id: UUID, image_id: UUID) -> ListingImage | None:
+        async with self.pool.acquire() as connection:
+            row = await connection.fetchrow(
+                f"DELETE FROM auction_images WHERE id = $1 AND auction_id = $2 "  # noqa: S608
+                f"RETURNING {_IMAGE_COLUMNS}",
+                image_id, auction_id,
+            )
+        return None if row is None else ListingImage(**dict(row))
