@@ -12,6 +12,16 @@ from uuid import UUID
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 MIN_PASSWORD, MAX_PASSWORD = 10, 128
 MAX_DISPLAY_NAME = 80
+VALID_CATEGORIES = {
+    "watches",
+    "cameras",
+    "jewelry",
+    "music",
+    "furniture",
+    "books",
+    "art",
+    "electronics",
+}
 
 
 @dataclass(frozen=True)
@@ -26,6 +36,9 @@ class User:
     token_version: int
     created_at: datetime
     updated_at: datetime
+    favorite_categories: tuple[str, ...] = ()
+    onboarded: bool = False
+    email_verified: bool = False
 
 
 class RegistrationError(ValueError):
@@ -63,6 +76,15 @@ def validate_display_name(name: str) -> str:
     return name
 
 
+def validate_categories(categories: list[str]) -> list[str]:
+    sanitized: list[str] = []
+    for cat in categories:
+        c = cat.strip().lower()
+        if c in VALID_CATEGORIES and c not in sanitized:
+            sanitized.append(c)
+    return sanitized
+
+
 def profile(user: User) -> dict:
     """What ``GET /users/me`` returns. Never the password hash or token version."""
     return {
@@ -73,4 +95,7 @@ def profile(user: User) -> dict:
         "kyc_status": user.kyc_status,
         "suspended": user.suspended,
         "created_at": user.created_at.isoformat().replace("+00:00", "Z"),
+        "favorite_categories": list(user.favorite_categories),
+        "onboarded": user.onboarded,
+        "email_verified": user.email_verified,
     }

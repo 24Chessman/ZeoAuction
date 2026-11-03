@@ -10,12 +10,26 @@ from app.domain.users import User, normalise_email
 
 _USER_COLUMNS = (
     "id, email::text AS email, password_hash, display_name, role, kyc_status, suspended, "
-    "token_version, created_at, updated_at"
+    "token_version, created_at, updated_at, favorite_categories, onboarded, email_verified"
 )
 _REFRESH_COLUMNS = (
     "id, user_id, family_id, token_hash, issued_at, expires_at, rotated_at, revoked_at, "
     "replaced_by"
 )
+
+
+def _row_to_user(row: dict[str, Any]) -> User:
+    data = dict(row)
+    favs = data.get("favorite_categories")
+    if favs is None:
+        data["favorite_categories"] = ()
+    elif isinstance(favs, (list, tuple)):
+        data["favorite_categories"] = tuple(favs)
+    if "onboarded" not in data or data["onboarded"] is None:
+        data["onboarded"] = False
+    if "email_verified" not in data or data["email_verified"] is None:
+        data["email_verified"] = False
+    return User(**data)
 
 
 class EmailTaken(Exception):
@@ -30,6 +44,12 @@ class UserRepository(Protocol):
     async def get_by_email(self, email: str) -> User | None: ...
 
     async def update_display_name(self, user_id: UUID, display_name: str) -> User | None: ...
+
+    async def update_preferences(
+        self, user_id: UUID, favorite_categories: list[str], onboarded: bool
+    ) -> User | None: ...
+
+    async def mark_email_verified(self, user_id: UUID) -> User | None: ...
 
     async def set_password_hash(self, user_id: UUID, password_hash: str) -> None: ...
 
@@ -58,6 +78,29 @@ class InMemoryUserRepository:
         self.users[user_id] = user
         return user
 
+    async def update_preferences(
+        self, user_id: UUID, favorite_categories: list[str], onboarded: bool
+    ) -> User | None:
+        user = self.users.get(user_id)
+        if user is None:
+            return None
+        user = replace(
+            user,
+            favorite_categories=tuple(favorite_categories),
+            onboarded=onboarded,
+            updated_at=datetime.now(UTC),
+        )
+        self.users[user_id] = user
+        return user
+
+    async def mark_email_verified(self, user_id: UUID) -> User | None:
+        user = self.users.get(user_id)
+        if user is None:
+            return None
+        user = replace(user, email_verified=True, updated_at=datetime.now(UTC))
+        self.users[user_id] = user
+        return user
+
     async def set_password_hash(self, user_id: UUID, password_hash: str) -> None:
         self.users[user_id] = replace(self.users[user_id], password_hash=password_hash)
 
@@ -72,9 +115,16 @@ class PostgresUserRepository:
         try:
             async with self.pool.acquire() as connection:
                 await connection.execute(
-                    "INSERT INTO users (id, email, password_hash, display_name) "
-                    "VALUES ($1, $2, $3, $4)",
-                    user.id, user.email, user.password_hash, user.display_name,
+                    "INSERT INTO users (id, email, password_hash, display_name, "
+                    "favorite_categories, onboarded, email_verified) "
+                    "VALUES ($1, $2, $3, $4, $5, $6, $7)",
+                    user.id,
+                    user.email,
+                    user.password_hash,
+                    user.display_name,
+                    list(user.favorite_categories),
+                    user.onboarded,
+                    user.email_verified,
                 )
         except asyncpg.UniqueViolationError as exc:
             raise EmailTaken(user.email) from exc
@@ -85,7 +135,7 @@ class PostgresUserRepository:
                 f"SELECT {_USER_COLUMNS} FROM users WHERE {where} = $1",  # noqa: S608 - constant
                 value,
             )
-        return None if row is None else User(**dict(row))
+        return None if row is None else _row_to_user(dict(row))
 
     async def get(self, user_id: UUID) -> User | None:
         return await self._one("id", user_id)
@@ -98,9 +148,32 @@ class PostgresUserRepository:
             row = await connection.fetchrow(
                 f"UPDATE users SET display_name = $1 WHERE id = $2 "  # noqa: S608 - constant
                 f"RETURNING {_USER_COLUMNS}",
-                display_name, user_id,
+                display_name,
+                user_id,
             )
-        return None if row is None else User(**dict(row))
+        return None if row is None else _row_to_user(dict(row))
+
+    async def update_preferences(
+        self, user_id: UUID, favorite_categories: list[str], onboarded: bool
+    ) -> User | None:
+        async with self.pool.acquire() as connection:
+            row = await connection.fetchrow(
+                f"UPDATE users SET favorite_categories = $1, onboarded = $2 WHERE id = $3 "  # noqa: S608
+                f"RETURNING {_USER_COLUMNS}",
+                favorite_categories,
+                onboarded,
+                user_id,
+            )
+        return None if row is None else _row_to_user(dict(row))
+
+    async def mark_email_verified(self, user_id: UUID) -> User | None:
+        async with self.pool.acquire() as connection:
+            row = await connection.fetchrow(
+                f"UPDATE users SET email_verified = true WHERE id = $1 "  # noqa: S608
+                f"RETURNING {_USER_COLUMNS}",
+                user_id,
+            )
+        return None if row is None else _row_to_user(dict(row))
 
     async def set_password_hash(self, user_id: UUID, password_hash: str) -> None:
         async with self.pool.acquire() as connection:
@@ -118,8 +191,12 @@ class PostgresRefreshTokenStore:
             await connection.execute(
                 "INSERT INTO refresh_tokens (id, user_id, family_id, token_hash, issued_at, "
                 "expires_at) VALUES ($1, $2, $3, $4, $5, $6)",
-                record.id, record.user_id, record.family_id, record.token_hash,
-                record.issued_at, record.expires_at,
+                record.id,
+                record.user_id,
+                record.family_id,
+                record.token_hash,
+                record.issued_at,
+                record.expires_at,
             )
 
     async def get_by_hash(self, token_hash: str) -> RefreshRecord | None:
@@ -137,13 +214,19 @@ class PostgresRefreshTokenStore:
                 await connection.execute(
                     "INSERT INTO refresh_tokens (id, user_id, family_id, token_hash, issued_at, "
                     "expires_at) VALUES ($1, $2, $3, $4, $5, $6)",
-                    new.id, new.user_id, new.family_id, new.token_hash, new.issued_at,
+                    new.id,
+                    new.user_id,
+                    new.family_id,
+                    new.token_hash,
+                    new.issued_at,
                     new.expires_at,
                 )
                 status = await connection.execute(
                     "UPDATE refresh_tokens SET rotated_at = $1, replaced_by = $2 "
                     "WHERE id = $3 AND rotated_at IS NULL AND revoked_at IS NULL",
-                    at, new.id, old.id,
+                    at,
+                    new.id,
+                    old.id,
                 )
                 if status != "UPDATE 1":
                     raise _LostRace
@@ -156,7 +239,8 @@ class PostgresRefreshTokenStore:
             await connection.execute(
                 "UPDATE refresh_tokens SET revoked_at = $1 "
                 "WHERE family_id = $2 AND revoked_at IS NULL",
-                at, family_id,
+                at,
+                family_id,
             )
 
 
