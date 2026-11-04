@@ -13,6 +13,8 @@ from app.adapters.user_repo import (
     UserRepository,
 )
 from app.api import router
+from app.domain.email_tokens import InMemoryEmailTokenStore
+from app.domain.otp import OtpStore
 from app.domain.refresh_tokens import (
     InMemoryRefreshTokenStore,
     RefreshTokens,
@@ -30,6 +32,8 @@ def build_app(
     users: UserRepository | None = None,
     token_store: RefreshTokenStore | None = None,
     jwt_settings: JwtSettings | None = None,
+    otp_store: OtpStore | None = None,
+    email_token_store: InMemoryEmailTokenStore | None = None,
 ) -> FastAPI:
     """Create the service. Tests pass in-memory stores; otherwise PostgreSQL is used."""
     settings = settings or Settings.from_env()
@@ -38,6 +42,8 @@ def build_app(
     )
     install_auth(app, jwt_settings)
     app.state.settings = settings
+    app.state.otp_store = otp_store or OtpStore()
+    app.state.email_tokens = email_token_store or InMemoryEmailTokenStore()
     ttl = timedelta(days=settings.refresh_ttl_days)
 
     def attach(user_repo: UserRepository, store: RefreshTokenStore) -> None:
