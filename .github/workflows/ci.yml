@@ -135,18 +135,30 @@ jobs:
         run: docker compose config --quiet
 
   contract-tests:
-    # Consumer-driven contract tests against running providers (CT-1, CT-3): Plan 7, #26.
+    # Consumer-driven contract tests (CT-1, CT-2, CT-3): Plan 7, #26, #48.
     needs: services
     runs-on: ubuntu-latest
     steps:
-      - run: echo "Stub until Plan 7 (#26). Unit suites already validate CT-1/CT-3 shapes."
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install ./libs/zeo-common -r requirements-dev.txt
+      - run: pytest tests/contracts -v
 
   end-to-end:
-    # Full Compose stack + end-to-end journeys: Plan 7, #99.
-    needs: [images, compose]
+    # End-to-end lifecycle and reconciliation suites: Plan 7, #36, #67.
+    needs: services
     runs-on: ubuntu-latest
     steps:
-      - run: echo "Stub until Plan 7 (#99)."
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install ./libs/zeo-common -r services/payment-escrow/requirements.txt -r requirements-dev.txt
+      - run: pytest tests/e2e -v
 
   gate:
     # The single required check for branch protection.

@@ -31,6 +31,7 @@ x-service-env: &service-env
   # Shared access-token secret (LOCAL DEVELOPMENT ONLY; Render sets its own).
   JWT_SECRET: ${JWT_SECRET:-zeo-dev-jwt-secret-not-for-production-use}
   CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-http://localhost:5173}
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaeger:4317}
 
 services:
   # ---------------------------------------------------------------- data and messaging
@@ -133,6 +134,17 @@ services:
     entrypoint: ["sh", "/opt/zeo/create-buckets.sh"]
     restart: "no"
 
+  # Distributed tracing with Jaeger (#101)
+  jaeger:
+    image: jaegertracing/all-in-one:1.50
+    restart: unless-stopped
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+      - "4318:4318"
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+
   # ---------------------------------------------------------------- application services
   auth-user:
     <<: *service-common
@@ -143,6 +155,12 @@ services:
       DATABASE_URL: postgresql://auth_svc:auth_dev_pw@postgres:5432/zeoauction
       # Seeded accounts log in with "zeo-dev-password" (infra/postgres/seed/dev-seed.sql).
       AUTH_ACCEPT_SEED_PASSWORD: "true"
+      GMAIL_USER: ${GMAIL_USER:-}
+      GMAIL_PASSWORD: ${GMAIL_PASSWORD:-}
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
 
   kyc:
     <<: *service-common
