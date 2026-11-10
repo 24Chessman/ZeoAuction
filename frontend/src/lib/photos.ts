@@ -1,5 +1,5 @@
 /**
- * Listing photos. The auction API has no images yet, so each seeded listing has a stock photo
+ * Stock listing photos, for listings whose seller uploaded none. Each seeded listing has one
  * and every other listing shows its category's. They are stock photos from Pexels (free to use
  * under the Pexels License), never pictures of the actual item, and the detail page says so.
  * Files live in public/images/auctions/; credits and sources below.

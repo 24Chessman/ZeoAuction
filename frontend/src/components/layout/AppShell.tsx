@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { ChevronDown, FlaskConical, LogOut, Menu, Moon, ShieldCheck, Sun, User, WifiOff, X } from "lucide-react";
+import { ChevronDown, LogOut, Menu, Moon, ShieldCheck, Sun, User, WifiOff, X } from "lucide-react";
 import { useAuth } from "@/app/auth";
 import { useConnectionStatus } from "@/app/live";
 import { useTheme } from "@/app/theme";
@@ -131,19 +131,6 @@ function UserMenu() {
   );
 }
 
-function SimulationStrip() {
-  return (
-    <div className="bg-midnight text-[12px] text-white/75">
-      <div className="mx-auto flex max-w-page items-center justify-center gap-2 px-4 py-1.5 text-center sm:px-6">
-        <FlaskConical className="size-3.5 shrink-0 text-brand" aria-hidden />
-        <span>
-          Test mode: payments are not real and escrow is simulated.{useMocks && " You're viewing synthetic demo data."}
-        </span>
-      </div>
-    </div>
-  );
-}
-
 function OfflineBar() {
   const [online, setOnline] = useState(() => navigator.onLine);
   useEffect(() => {
@@ -187,7 +174,6 @@ export function AppShell() {
       <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[70] focus:rounded-lg focus:bg-surface focus:px-4 focus:py-2 focus:shadow-lift">
         Skip to content
       </a>
-      <SimulationStrip />
       <OfflineBar />
       <header className="sticky top-0 z-30 border-b border-line/80 bg-canvas/80 backdrop-blur-xl backdrop-saturate-150">
         <div className="mx-auto flex h-[68px] max-w-page items-center gap-4 px-4 sm:px-6">
@@ -235,7 +221,7 @@ export function AppShell() {
             <span className="hidden font-display text-[15px] text-white/70 lg:inline">Going once, going twice, held in escrow.</span>
           </div>
           <p>
-            Coursework simulation · M.Sc. IT semester 3, 2026 · Fee policy {policy.feeVersion}
+            ZeoAuction · Real-time live bidding & secure escrow · Fee policy {policy.feeVersion}
           </p>
         </div>
       </footer>

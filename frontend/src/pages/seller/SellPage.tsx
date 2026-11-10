@@ -61,7 +61,7 @@ export function SellPage() {
                     <tr key={auction.auction_id} className="group hover:bg-surface-2/50">
                       <Td>
                         <Link to={`/auctions/${auction.auction_id}`} className="flex items-center gap-3">
-                          <AuctionArt id={auction.auction_id} category={auction.category} size="sm" className="size-11 shrink-0 rounded-xl" />
+                          <AuctionArt id={auction.auction_id} category={auction.category} src={auction.images?.[0]?.url} size="sm" className="size-11 shrink-0 rounded-xl" />
                           <span className="font-medium group-hover:text-brand-ink">{auction.title}</span>
                         </Link>
                       </Td>

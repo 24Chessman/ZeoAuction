@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { ArrowRight, BadgeCheck, Fingerprint, ImageIcon, Lock, Phone, QrCode, ScanFace, ShieldCheck } from "lucide-react";
+import { ArrowRight, BadgeCheck, Fingerprint, ImageIcon, Lock, Phone, QrCode, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/app/auth";
-import { kycApi, type FaceOutcome, type KycStatus, type KycSubmission } from "@/lib/api";
+import { kycApi, type KycStatus, type KycSubmission } from "@/lib/api";
 import { useMocks } from "@/lib/config";
 import { ApiError, describeError } from "@/lib/errors";
 import { formatDateTime } from "@/lib/format";
@@ -9,7 +9,6 @@ import { useAsync } from "@/lib/useAsync";
 import {
   Banner, Button, ButtonLink, Card, CardBody, CardHeader, Field, FileDrop, Input, KycBadge, PageHeader, Skeleton, useToast, type FileRules,
 } from "@/components/ui";
-import { FaceCapture } from "@/components/kyc/FaceCapture";
 import { KycStatusStrip } from "@/components/kyc/KycStatusStrip";
 import { ListingGatePanel } from "@/components/kyc/ListingGatePanel";
 
@@ -22,12 +21,6 @@ const QR_RULES: FileRules = {
 };
 const GENDER: Record<string, string> = { M: "Male", F: "Female", T: "Transgender" };
 
-const FACE_RESULT: Record<Exclude<FaceOutcome, "MATCH" | "REVIEW">, { title: string; hint: string }> = {
-  NO_MATCH: { title: "That didn't match your Aadhaar photo", hint: "Make sure it's you on the Aadhaar, face the light and remove glasses, then try again." },
-  LIVENESS_FAILED: { title: "We couldn't confirm a live person", hint: "Turn your head left and right when the prompt asks, and keep moving naturally." },
-  NO_FACE: { title: "We couldn't see exactly one face", hint: "Fill the oval with your face, use brighter light, and keep others out of the frame. This didn't use up an attempt." },
-};
-
 export function KycPage() {
   const { user, reload: reloadUser, refreshClaims } = useAuth();
   const toast = useToast();
@@ -36,7 +29,7 @@ export function KycPage() {
   const previous = useRef<KycStatus | null>(null);
   const [replacing, setReplacing] = useState(false);
 
-  // Only a manual review waits on someone else; check every few seconds so the decision shows up.
+  // When under review, poll so the administrator's decision shows up promptly.
   useEffect(() => {
     if (status !== "UNDER_REVIEW") return;
     const timer = setInterval(() => void reload(), 5000);
@@ -60,14 +53,13 @@ export function KycPage() {
     setReplacing(false);
   };
   const showUpload = !submission || (submission.state === "REJECTED" && submission.can_resubmit) || (replacing && submission.can_resubmit);
-  const showFace = submission?.state === "SUBMITTED" && !replacing;
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
       <PageHeader
         eyebrow="Seller verification"
         title={status === "VERIFIED" ? "You're a verified seller" : "Verify your identity to sell"}
-        description="Bidding needs nothing. To list an item, verify with your Aadhaar offline e-KYC and a quick live face check. Buyers never see any of it."
+        description="Bidding needs nothing. To list an item, verify with your Aadhaar offline e-KYC. Buyers never see any of it."
         actions={<KycBadge status={status} />}
       />
 
@@ -91,13 +83,23 @@ export function KycPage() {
               onVerified={(next) => {
                 update(next);
                 void reloadUser();
-                toast({ tone: "positive", title: "Aadhaar verified", description: "UIDAI's signature checks out. Now the face check." });
+                toast({ tone: "positive", title: "Aadhaar verified", description: "UIDAI's signature checks out. Your verification is now under review." });
               }}
             />
-          ) : showFace && submission ? (
-            <FaceStep submission={submission} onResult={update} onReplace={() => setReplacing(true)} />
           ) : null}
-          {submission?.aadhaar && !showUpload && !showFace ? <IdentityCard submission={submission} /> : null}
+          {submission?.aadhaar && !showUpload ? (
+            <div className="space-y-4">
+              <IdentityCard submission={submission} />
+              {submission.can_resubmit && (
+                <p className="text-center text-sm text-ink-muted">
+                  Need to update your details?{" "}
+                  <button type="button" onClick={() => setReplacing(true)} className="font-medium text-brand-ink underline-offset-2 hover:underline">
+                    Upload a different Aadhaar QR
+                  </button>
+                </p>
+              )}
+            </div>
+          ) : null}
         </div>
         <div className="space-y-4">
           {status === "VERIFIED" ? (
@@ -117,7 +119,7 @@ export function KycPage() {
             <ul className="mt-3 list-disc space-y-2 pl-4">
               <li>Your name, birth year, gender, state and the last 4 digits UIDAI already shows. Never your full Aadhaar number or address.</li>
               <li>The QR photo, what the QR holds and your mobile number are used once to verify, then discarded.</li>
-              <li>Your Aadhaar photo and one matched camera frame are stored encrypted. An administrator sees them only if a review is needed, and every view is logged.</li>
+              <li>Your Aadhaar details are stored securely. An administrator sees them when approving your account, and every view is logged.</li>
             </ul>
           </div>
         </div>
@@ -129,17 +131,13 @@ export function KycPage() {
 function StatusMessage({ status, submission }: { status: KycStatus; submission: KycSubmission | null }) {
   switch (status) {
     case "NOT_SUBMITTED":
-      return <Banner tone="info" title="Two steps, about two minutes">Upload a photo of the QR code on your Aadhaar, then look into your camera for a few seconds.</Banner>;
+      return <Banner tone="info" title="One simple step">Upload a photo of the QR code on your Aadhaar to verify your seller identity.</Banner>;
     case "SUBMITTED":
-      return (
-        <Banner tone="info" title="Aadhaar verified, face check next" live>
-          {submission?.aadhaar ? `Signed by UIDAI for ${submission.aadhaar.holder_name}. ` : ""}Now show us it's really you.
-        </Banner>
-      );
     case "UNDER_REVIEW":
       return (
-        <Banner tone="info" title="Your face check needs a second look" live>
-          It was close, so an administrator is comparing your camera frame with the Aadhaar photo. This page updates by itself.
+        <Banner tone="info" title="Waiting for administrator approval" live>
+          {submission?.aadhaar ? `Signed by UIDAI for ${submission.aadhaar.holder_name}. ` : ""}
+          An administrator approves every new seller before they can list. This page updates by itself.
         </Banner>
       );
     case "VERIFIED":
@@ -199,8 +197,8 @@ function AadhaarForm({ replacing, onVerified, onCancel }: { replacing: boolean; 
   return (
     <Card>
       <CardHeader
-        title={<span className="flex items-center gap-2"><Fingerprint className="size-5 text-brand-ink" aria-hidden /> Step 1 · Aadhaar QR code</span>}
-        description={replacing ? "Upload a different photo. It replaces the one waiting for the face check." : "UIDAI signs the QR code, so we can check it wasn't changed. Your full Aadhaar number is never in it."}
+        title={<span className="flex items-center gap-2"><Fingerprint className="size-5 text-brand-ink" aria-hidden /> Aadhaar QR code</span>}
+        description={replacing ? "Upload a different photo. It replaces your previous submission." : "UIDAI signs the QR code, so we can check it wasn't changed. Your full Aadhaar number is never in it."}
       />
       <CardBody>
         <ol className="mb-6 grid gap-2 rounded-2xl bg-surface-2/60 p-4 text-sm text-ink-muted sm:grid-cols-2">
@@ -246,8 +244,7 @@ function AadhaarForm({ replacing, onVerified, onCancel }: { replacing: boolean; 
           ) : null}
           {useMocks && (
             <p className="rounded-2xl border border-dashed border-line-strong p-3 text-xs text-ink-faint">
-              Mock mode: the QR is read and UIDAI&apos;s signature checked in your browser; nothing is uploaded. The face check is
-              simulated: a file name containing <code>review</code> sends it to review, <code>nomatch</code> never matches.
+              Mock mode: the QR is read and UIDAI&apos;s signature checked in your browser; nothing is uploaded.
             </p>
           )}
           <div className="flex flex-col-reverse items-stretch gap-3 border-t border-line pt-5 sm:flex-row sm:items-center sm:justify-end">
@@ -255,65 +252,6 @@ function AadhaarForm({ replacing, onVerified, onCancel }: { replacing: boolean; 
             <Button type="submit" loading={busy} disabled={!ready} icon={<ShieldCheck className="size-4" />}>Verify Aadhaar</Button>
           </div>
         </form>
-      </CardBody>
-    </Card>
-  );
-}
-
-function FaceStep({ submission, onResult, onReplace }: { submission: KycSubmission; onResult: (s: KycSubmission) => void; onReplace: () => void }) {
-  const toast = useToast();
-  const [busy, setBusy] = useState(false);
-  const [outcome, setOutcome] = useState<FaceOutcome | null>(null);
-  const [error, setError] = useState<unknown>(null);
-  const [round, setRound] = useState(0);
-  const left = submission.face.attempts_left;
-
-  const check = async (frames: Blob[]) => {
-    setBusy(true);
-    setError(null);
-    setOutcome(null);
-    try {
-      const result = await kycApi.faceCheck(submission.submission_id, frames);
-      setOutcome(result.outcome);
-      if (result.outcome === "REVIEW") toast({ tone: "info", title: "Sent for a quick review", description: "An administrator will compare the photos." });
-      onResult(result.submission);
-    } catch (caught) {
-      setError(caught);
-    } finally {
-      setBusy(false);
-      setRound((n) => n + 1);
-    }
-  };
-
-  const failed = outcome && outcome !== "MATCH" && outcome !== "REVIEW" ? FACE_RESULT[outcome] : null;
-  return (
-    <Card>
-      <CardHeader
-        title={<span className="flex items-center gap-2"><ScanFace className="size-5 text-brand-ink" aria-hidden /> Step 2 · Live face check</span>}
-        description={`We compare you with the photo in your Aadhaar. ${left} ${left === 1 ? "attempt" : "attempts"} left.`}
-      />
-      <CardBody className="space-y-5">
-        {submission.aadhaar && (
-          <div className="flex items-center gap-3 rounded-2xl bg-positive-soft/50 p-3 text-sm">
-            <BadgeCheck className="size-5 shrink-0 text-positive" aria-hidden />
-            <p className="min-w-0 text-ink-muted">
-              <span className="font-semibold text-ink">{submission.aadhaar.holder_name}</span> · Aadhaar XXXX XXXX {submission.aadhaar.reference_last4}
-            </p>
-          </div>
-        )}
-        {failed && (
-          <Banner tone={outcome === "NO_FACE" ? "warning" : "danger"} title={failed.title} live>
-            {failed.hint} {outcome !== "NO_FACE" && (left > 0 ? `${left} ${left === 1 ? "attempt" : "attempts"} left.` : "")}
-          </Banner>
-        )}
-        {error ? <Banner tone="danger" title={describeError(error).title} live>{describeError(error).message}</Banner> : null}
-        <FaceCapture key={round} busy={busy} onCaptured={(frames) => void check(frames)} />
-        {submission.can_resubmit && (
-          <p className="text-center text-sm text-ink-muted">
-            Wrong Aadhaar?{" "}
-            <button type="button" onClick={onReplace} className="font-medium text-brand-ink underline-offset-2 hover:underline">Upload a different one</button>
-          </p>
-        )}
       </CardBody>
     </Card>
   );

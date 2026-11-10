@@ -9,11 +9,15 @@ import { AuctionDetailPage } from "@/pages/AuctionDetailPage";
 import { AuctionsPage } from "@/pages/AuctionsPage";
 import { LoginPage } from "@/pages/auth/LoginPage";
 import { RegisterPage } from "@/pages/auth/RegisterPage";
+import { VerifyEmailPage } from "@/pages/auth/VerifyEmailPage";
+import { ForgotPasswordPage } from "@/pages/auth/ForgotPasswordPage";
+import { ResetPasswordPage } from "@/pages/auth/ResetPasswordPage";
 import { LandingPage } from "@/pages/LandingPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { CreateAuctionPage } from "@/pages/seller/CreateAuctionPage";
 import { KycPage } from "@/pages/seller/KycPage";
 import { SellPage } from "@/pages/seller/SellPage";
+import { CategoryOnboardingModal } from "@/components/recommendations/CategoryOnboardingModal";
 import { AuthProvider } from "./auth";
 import { RequireAdmin, RequireAuth } from "./guards";
 import { LiveProvider } from "./live";
@@ -33,6 +37,9 @@ export function AppRoutes() {
         <Route index element={<LandingPage />} />
         <Route path="login" element={<LoginPage />} />
         <Route path="register" element={<RegisterPage />} />
+        <Route path="verify-email" element={<VerifyEmailPage />} />
+        <Route path="forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="reset-password" element={<ResetPasswordPage />} />
         <Route path="auctions" element={<AuctionsPage />} />
         <Route path="auctions/:auctionId" element={<AuctionDetailPage />} />
         <Route path="account" element={<RequireAuth><AccountPage /></RequireAuth>} />
@@ -54,6 +61,7 @@ export function App() {
       <AuthProvider>
         <LiveProvider>
           <ScrollToTop />
+          <CategoryOnboardingModal />
           <AppRoutes />
         </LiveProvider>
       </AuthProvider>

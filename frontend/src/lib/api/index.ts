@@ -4,7 +4,8 @@ import { toMoneyString, type Cents } from "../money";
 import { request } from "./http";
 import type {
   AdminSubmission, Auction, BidAccepted, BidPage, CheckoutSession, CreateAuction, DocumentUrl, FeeQuote,
-  FaceCheckResult, KycSubmission, LedgerEntry, Order, PaymentConfirmation, Profile, QueuePage, TokenPair,
+  FaceCheckResult, ForgotPasswordResult, KycSubmission, LedgerEntry, Order, PaymentConfirmation, Profile, QueuePage,
+  RegisterResult, ResetPasswordResult, SendGmailOtpResult, TokenPair, VerifyEmailResult,
 } from "./types";
 
 export * from "./types";
@@ -32,8 +33,20 @@ function rememberedAuctions(): string[] {
 }
 
 export const authApi = {
-  async register(body: { email: string; password: string; display_name: string }): Promise<Profile> {
-    return (await request<Profile>("auth", "POST", "/api/v1/auth/register", { json: body })).data;
+  async register(body: { email: string; password: string; display_name: string }): Promise<RegisterResult> {
+    return (await request<RegisterResult>("auth", "POST", "/api/v1/auth/register", { json: body })).data;
+  },
+  async verifyEmail(token: string): Promise<VerifyEmailResult> {
+    return (await request<VerifyEmailResult>("auth", "POST", "/api/v1/auth/verify-email", { json: { token } })).data;
+  },
+  async resendVerification(email: string): Promise<{ status: string; email: string; dev_verify_link?: string }> {
+    return (await request<{ status: string; email: string; dev_verify_link?: string }>("auth", "POST", "/api/v1/auth/resend-verification", { json: { email } })).data;
+  },
+  async forgotPassword(email: string): Promise<ForgotPasswordResult> {
+    return (await request<ForgotPasswordResult>("auth", "POST", "/api/v1/auth/forgot-password", { json: { email } })).data;
+  },
+  async resetPassword(token: string, new_password: string): Promise<ResetPasswordResult> {
+    return (await request<ResetPasswordResult>("auth", "POST", "/api/v1/auth/reset-password", { json: { token, new_password } })).data;
   },
   async login(email: string, password: string): Promise<TokenPair> {
     return (await request<TokenPair>("auth", "POST", "/api/v1/auth/login", { json: { email, password } })).data;
@@ -46,6 +59,15 @@ export const authApi = {
   },
   async updateMe(display_name: string): Promise<Profile> {
     return (await request<Profile>("auth", "PATCH", "/api/v1/users/me", { auth: true, json: { display_name } })).data;
+  },
+  async sendGmailOtp(email: string): Promise<SendGmailOtpResult> {
+    return (await request<SendGmailOtpResult>("auth", "POST", "/api/v1/auth/gmail/send-otp", { json: { email } })).data;
+  },
+  async verifyGmailOtp(email: string, otp: string, displayName?: string): Promise<TokenPair> {
+    return (await request<TokenPair>("auth", "POST", "/api/v1/auth/gmail/verify-otp", { json: { email, otp, display_name: displayName } })).data;
+  },
+  async updatePreferences(favorite_categories: string[]): Promise<Profile> {
+    return (await request<Profile>("auth", "PATCH", "/api/v1/users/me", { auth: true, json: { favorite_categories, onboarded: true } })).data;
   },
 };
 
@@ -67,6 +89,15 @@ export const auctionApi = {
     const auction = (await request<Auction>("auction", "POST", "/api/v1/auctions", { auth: true, json: body })).data;
     rememberAuction(auction.auction_id);
     return auction;
+  },
+  /** Seller only, while DRAFT or SCHEDULED; at most six JPEG, PNG or WebP photos. */
+  async addImage(id: string, image: File): Promise<Auction> {
+    const form = new FormData();
+    form.append("image", image);
+    return (await request<Auction>("auction", "POST", `/api/v1/auctions/${id}/images`, { auth: true, form })).data;
+  },
+  async removeImage(id: string, imageId: string): Promise<Auction> {
+    return (await request<Auction>("auction", "DELETE", `/api/v1/auctions/${id}/images/${imageId}`, { auth: true })).data;
   },
   async publish(id: string): Promise<Auction> {
     return (await request<Auction>("auction", "POST", `/api/v1/auctions/${id}/publish`, { auth: true })).data;

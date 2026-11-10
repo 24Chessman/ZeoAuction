@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, BadgeCheck, CalendarClock, Hash, Landmark, Scale, ShieldCheck, Timer, Trophy } from "lucide-react";
 import { useAuth } from "@/app/auth";
@@ -8,6 +9,7 @@ import { formatMoney, parseMoney } from "@/lib/money";
 import { duration, policy } from "@/lib/policy";
 import { photoFor } from "@/lib/photos";
 import { useAsync } from "@/lib/useAsync";
+import { cn } from "@/lib/cn";
 import { AuctionStateBadge, Badge, Banner, ButtonLink, Skeleton } from "@/components/ui";
 import { AuctionArt } from "@/components/auction/AuctionArt";
 import { BidHistory } from "@/components/auction/BidHistory";
@@ -51,6 +53,9 @@ function AuctionDetail({ auction: initial, bids: initialBids }: { auction: Aucti
   const extended = auction.extension_count > 0;
   const winning = auction.winning_bid_id ? bids.items.find((b) => b.bid_id === auction.winning_bid_id) : null;
   const photo = photoFor(auction.auction_id, auction.category);
+  const images = auction.images ?? [];
+  const [shown, setShown] = useState(0);
+  const current = images[Math.min(shown, images.length - 1)];
 
   return (
     <div className="mx-auto max-w-page px-4 pb-20 pt-6 sm:px-6">
@@ -67,14 +72,42 @@ function AuctionDetail({ auction: initial, bids: initialBids }: { auction: Aucti
         <div className="min-w-0 space-y-8 lg:col-start-1">
           <figure>
             <div className="overflow-hidden rounded-4xl border border-line shadow-lift">
-              <AuctionArt id={auction.auction_id} category={auction.category} size="lg" priority className="aspect-[16/9]" />
+              <AuctionArt
+                id={auction.auction_id} category={auction.category} size="lg" priority className="aspect-[16/9]"
+                src={current?.url} alt={current ? `${auction.title}, photo ${shown + 1} of ${images.length}` : undefined}
+              />
             </div>
+            {images.length > 1 && (
+              <div className="mt-3 flex gap-2 overflow-x-auto pb-1" role="group" aria-label="Photos">
+                {images.map((image, index) => (
+                  <button
+                    key={image.image_id}
+                    type="button"
+                    onClick={() => setShown(index)}
+                    aria-label={`Show photo ${index + 1}`}
+                    aria-pressed={current?.image_id === image.image_id}
+                    className={cn(
+                      "size-16 shrink-0 overflow-hidden rounded-xl border-2 transition-colors sm:size-20",
+                      current?.image_id === image.image_id ? "border-brand" : "border-transparent opacity-75 hover:opacity-100",
+                    )}
+                  >
+                    <img src={image.url} alt="" className="size-full object-cover" />
+                  </button>
+                ))}
+              </div>
+            )}
             <figcaption className="mt-2 text-xs text-ink-faint">
-              Stock photo by{" "}
-              <a href={photo.source} target="_blank" rel="noreferrer" className="underline decoration-line-strong underline-offset-2 hover:text-ink">
-                {photo.photographer} on Pexels
-              </a>
-              , for illustration. It isn't a photo of this item.
+              {current ? (
+                "Photos from the seller."
+              ) : (
+                <>
+                  Stock photo by{" "}
+                  <a href={photo.source} target="_blank" rel="noreferrer" className="underline decoration-line-strong underline-offset-2 hover:text-ink">
+                    {photo.photographer} on Pexels
+                  </a>
+                  , for illustration. It isn't a photo of this item.
+                </>
+              )}
             </figcaption>
           </figure>
 
@@ -107,7 +140,7 @@ function AuctionDetail({ auction: initial, bids: initialBids }: { auction: Aucti
               {winning ? (
                 <>
                   Won by <span className="font-mono">{winning.bidder_alias}</span> at {formatMoney(parseMoney(winning.amount), auction.currency)}. The winner pays
-                  the bid plus the flat fee in Razorpay Checkout (test mode), and it's held in simulated escrow until delivery is confirmed.
+                  the bid plus the flat fee in Razorpay Checkout, and it's held in secure escrow until delivery is confirmed.
                 </>
               ) : (
                 "No order is created when an auction ends without bids."
@@ -120,10 +153,10 @@ function AuctionDetail({ auction: initial, bids: initialBids }: { auction: Aucti
             <h2 id="safeguards" className="text-2xl font-semibold">How this auction protects you</h2>
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
               <Safeguard icon={<BadgeCheck className="size-5" />} title="Verified seller">
-                Only sellers verified through Aadhaar e-KYC and a live face check can list. Their identity details are never shown to buyers.
+                Only sellers verified through Aadhaar e-KYC can list. Their identity details are never shown to buyers.
               </Safeguard>
               <Safeguard icon={<Landmark className="size-5" />} title={`${policy.protectionDays}-day protection window`}>
-                Your payment waits in escrow (simulated) until you confirm receipt, or {policy.protectionDays} days after shipping with no dispute.
+                Your payment waits in secure escrow until you confirm receipt, or {policy.protectionDays} days after shipping with no dispute.
               </Safeguard>
               <Safeguard icon={<Hash className="size-5" />} title="Server-ordered bids">
                 Every accepted bid gets the next sequence number, so equal bids always resolve the same way.

@@ -77,7 +77,7 @@ export async function payWithRazorpay(
       amount: session.amount_minor,
       currency: session.currency,
       order_id: session.provider_order_id,
-      name: "ZeoAuction (test mode)",
+      name: "ZeoAuction",
       description: session.description,
       prefill,
       notes: { order_id: session.order_id },

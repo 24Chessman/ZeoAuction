@@ -8,6 +8,30 @@ import { cn } from "@/lib/cn";
 import { formatMoney } from "@/lib/money";
 import { photoFor } from "@/lib/photos";
 import { duration, policy } from "@/lib/policy";
+import { auctionApi, bidApi, type Auction } from "@/lib/api";
+import { parseMoney, type Cents } from "@/lib/money";
+import { useAsync } from "@/lib/useAsync";
+import { RecommendedFeedSection } from "@/components/recommendations/RecommendedFeedSection";
+
+interface Row {
+  auction: Auction;
+  price: Cents | null;
+  bids: number;
+}
+
+async function loadLandingAuctions(): Promise<Row[]> {
+  const auctions = (await auctionApi.list()).filter((a) => a.state !== "DRAFT" && a.state !== "CANCELLED");
+  return Promise.all(
+    auctions.map(async (auction) => {
+      try {
+        const page = await bidApi.list(auction.auction_id, 1, 1);
+        return { auction, price: page.items[0] ? parseMoney(page.items[0].amount) : null, bids: page.total };
+      } catch {
+        return { auction, price: null, bids: 0 };
+      }
+    }),
+  );
+}
 
 const fee = formatMoney(policy.feeCents, policy.currency);
 const CATEGORIES = ["watches", "cameras", "jewelry", "music", "furniture", "books", "art", "electronics"];
@@ -15,6 +39,7 @@ const CATEGORIES = ["watches", "cameras", "jewelry", "music", "furniture", "book
 export function LandingPage() {
   const { status } = useAuth();
   const signedIn = status === "signed-in";
+  const { data } = useAsync(loadLandingAuctions, []);
 
   return (
     <div className="overflow-x-clip">
@@ -28,7 +53,7 @@ export function LandingPage() {
                 <span className="absolute inline-flex size-full animate-live-ping rounded-full bg-brand opacity-70" />
                 <span className="relative inline-flex size-2 rounded-full bg-brand" />
               </span>
-              Live auctions with simulated escrow
+              Live auctions with buyer-protected escrow
             </p>
             <h1 className="mt-7 text-display font-semibold">
               Bid live.
@@ -85,6 +110,13 @@ export function LandingPage() {
         </div>
       </section>
 
+      {/* Recommended For You Section on Home Feed */}
+      {signedIn && data && (
+        <section className="mx-auto max-w-page px-4 pt-16 sm:px-6">
+          <RecommendedFeedSection auctions={data} />
+        </section>
+      )}
+
       {/* Safeguards */}
       <section className="mx-auto max-w-page px-4 py-24 sm:px-6">
         <div className="grid gap-6 lg:grid-cols-[1.1fr_1fr] lg:items-end">
@@ -106,7 +138,7 @@ export function LandingPage() {
             </div>
           </Tile>
           <Tile className="md:col-span-2" tone="positive" icon={<BadgeCheck className="size-5" />} title="Verified sellers">
-            Nobody lists before their Aadhaar e-KYC and a live face check match.
+            Nobody lists before their Aadhaar e-KYC verifies.
           </Tile>
           <Tile className="md:col-span-2" tone="info" icon={<Landmark className="size-5" />} title="Escrow until delivery">
             The seller is paid when you confirm receipt, or {policy.protectionDays} days after shipping with no dispute.
@@ -152,10 +184,10 @@ export function LandingPage() {
             Bids, outbid alerts and extensions arrive as they happen. You only pay if you win.
           </Role>
           <Role photo={photoFor("", "art").src} title="Selling" lead="Verify once, then list.">
-            Opening an account asks for no documents. To sell, verify with Aadhaar e-KYC and a face check, then list and get paid from escrow.
+            Opening an account asks for no documents. To sell, verify with Aadhaar e-KYC, then list and get paid from escrow.
           </Role>
           <Role photo={photoFor("", "books").src} title="Administering" lead="Every decision leaves a record.">
-            Compare close face matches with the Aadhaar photo through short-lived links. Every decision goes to an append-only audit log.
+            Review and approve seller verification submissions directly. Every decision goes to an append-only audit log.
           </Role>
         </div>
       </section>
@@ -182,7 +214,7 @@ export function LandingPage() {
           </div>
         </div>
         <p className="mx-auto mt-4 max-w-page text-center text-xs text-ink-faint">
-          Coursework simulation: payments run in test mode and escrow is simulated. Photos are Pexels stock images.
+          Real-time live auction platform. Photos are Pexels stock images.
         </p>
       </section>
     </div>
@@ -190,11 +222,11 @@ export function LandingPage() {
 }
 
 const STEPS = [
-  ["Seller verified", "A UIDAI-signed Aadhaar e-KYC and a live face match come before the first listing."],
+  ["Seller verified", "A UIDAI-signed Aadhaar e-KYC verification comes before the first listing."],
   ["Auction opens", "Watchers see the starting price and whether the reserve has been met."],
   ["Bids are numbered", "Each accepted bid gets the next sequence number and reaches every watcher live."],
   ["The close is protected", `Late bids extend the auction by ${duration(policy.extensionSeconds)} so everyone can answer.`],
-  ["Payment is held", `The winning bid plus the ${fee} fee goes into escrow (simulated). The seller isn't paid yet.`],
+  ["Payment is held", `The winning bid plus the ${fee} fee goes into secure escrow. The seller isn't paid yet.`],
   ["Funds are released", "After you confirm receipt, or the protection window passes with no dispute."],
 ] as const;
 

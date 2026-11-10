@@ -68,7 +68,7 @@ async function upload(mock: MockServer, token: string, name?: string) {
 }
 
 describe("mock Aadhaar Secure QR and face check", () => {
-  it("verifies the Aadhaar, then a clear face match verifies the seller", async () => {
+  it("verifies the Aadhaar, then a clear face match puts the seller in the admin queue", async () => {
     const mock = server();
     const token = await login(mock, "unverified@zeo.local");
     const submission = await upload(mock, token);
@@ -83,7 +83,8 @@ describe("mock Aadhaar Secure QR and face check", () => {
     expect(check.status).toBe(200);
     const result = check.body as FaceCheckResult;
     expect(result.outcome).toBe("MATCH");
-    expect(result.submission.state).toBe("VERIFIED");
+    expect(result.submission.state).toBe("UNDER_REVIEW");
+    expect(result.submission.decided_at).toBeNull();
     expect(result.submission.documents.map((d) => d.doc_type)).toEqual(["AADHAAR_PHOTO", "FACE_CAPTURE"]);
   });
 

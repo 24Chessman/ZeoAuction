@@ -70,8 +70,8 @@ export function AuctionStateBadge({ state, className }: { state: AuctionState; c
 
 export const KYC_LABEL: Record<KycStatus, { label: string; tone: Tone }> = {
   NOT_SUBMITTED: { label: "Not verified", tone: "neutral" },
-  SUBMITTED: { label: "Face check pending", tone: "info" },
-  UNDER_REVIEW: { label: "Manual review", tone: "info" },
+  SUBMITTED: { label: "Awaiting approval", tone: "info" },
+  UNDER_REVIEW: { label: "Awaiting approval", tone: "info" },
   VERIFIED: { label: "Verified seller", tone: "positive" },
   REJECTED: { label: "Rejected", tone: "danger" },
   SUSPENDED: { label: "Suspended", tone: "danger" },

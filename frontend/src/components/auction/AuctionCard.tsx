@@ -24,7 +24,7 @@ export function AuctionCard({ auction, price, bidCount }: Props) {
       className="group flex flex-col overflow-hidden rounded-3xl border border-line bg-surface p-2 shadow-card transition-[box-shadow,transform,border-color] duration-300 hover:-translate-y-1 hover:border-line-strong hover:shadow-lift"
     >
       <div className="relative overflow-hidden rounded-[18px]">
-        <AuctionArt id={auction.auction_id} category={auction.category} className="aspect-[4/3] transition-transform duration-700 group-hover:scale-[1.05]" />
+        <AuctionArt id={auction.auction_id} category={auction.category} src={auction.images?.[0]?.url} className="aspect-[4/3] transition-transform duration-700 group-hover:scale-[1.05]" />
         <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/45 to-transparent" aria-hidden />
         <div className="absolute left-3 top-3 flex gap-1.5">
           <AuctionStateBadge state={auction.state} className="bg-surface/95 shadow-card backdrop-blur" />

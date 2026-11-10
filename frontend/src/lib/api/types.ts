@@ -16,6 +16,29 @@ export interface Profile {
   kyc_status: KycStatus;
   suspended: boolean;
   created_at: string;
+  favorite_categories?: string[];
+  onboarded?: boolean;
+  email_verified?: boolean;
+}
+
+export interface VerifyEmailResult {
+  status: string;
+  email: string;
+}
+
+export interface ForgotPasswordResult {
+  status: string;
+  email: string;
+  dev_reset_link?: string;
+}
+
+export interface ResetPasswordResult {
+  status: string;
+  message: string;
+}
+
+export interface RegisterResult extends Profile {
+  dev_verify_link?: string;
 }
 
 export interface TokenPair {
@@ -24,6 +47,22 @@ export interface TokenPair {
   token_type: string;
   expires_in: number;
   user: Profile;
+  is_first_login?: boolean;
+}
+
+export interface SendGmailOtpResult {
+  status: string;
+  email: string;
+  expires_in: number;
+  dev_otp?: string;
+}
+
+/** A listing photo (services/auction-orchestrator). The URL is signed and expires in minutes. */
+export interface AuctionImage {
+  image_id: string;
+  url: string;
+  mime_type: string;
+  position: number;
 }
 
 export interface Auction {
@@ -45,6 +84,7 @@ export interface Auction {
   extension_seconds: number;
   winning_bid_id: string | null;
   version: number;
+  images: AuctionImage[];
 }
 
 export interface CreateAuction {

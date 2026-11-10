@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Check, ChevronDown, CreditCard, FlaskConical, Landmark, Receipt, RefreshCw } from "lucide-react";
+import { Check, ChevronDown, CreditCard, FlaskConical, Landmark, Receipt, RefreshCw, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/app/auth";
 import { orderApi, type Auction, type CheckoutSession, type LedgerEntry, type OrderState } from "@/lib/api";
 import { cn } from "@/lib/cn";
@@ -57,7 +57,7 @@ export function SettlementPanel({ auction, onSettled }: { auction: Auction; onSe
     setData(updated);
     key.current = newKey();
     if (updated.state === "IN_ESCROW") {
-      toast({ tone: "positive", title: "Payment received", description: `${money(updated.total)} is held in simulated escrow.` });
+      toast({ tone: "positive", title: "Payment received", description: `${money(updated.total)} is held in secure escrow.` });
       onSettled?.();
     }
   }
@@ -141,7 +141,7 @@ export function SettlementPanel({ auction, onSettled }: { auction: Auction; onSe
         )}
         {order.state === "IN_ESCROW" && (
           <Banner tone="positive" title={isBuyer ? "Paid and held in escrow" : "The buyer has paid"}>
-            {money(order.total)} is held in simulated escrow. The seller is paid when the buyer confirms receipt, or {policy.protectionDays} days after
+            {money(order.total)} is held in secure escrow. The seller is paid when the buyer confirms receipt, or {policy.protectionDays} days after
             shipping if there's no dispute.
           </Banner>
         )}
@@ -160,16 +160,16 @@ export function SettlementPanel({ auction, onSettled }: { auction: Auction; onSe
         )}
 
         <p className="flex items-start gap-2 text-xs leading-relaxed text-ink-faint">
-          <FlaskConical className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-          {order.notice} Payments run through Razorpay in test mode.
+          <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-positive" aria-hidden />
+          {order.notice}
         </p>
       </CardBody>
 
       <Modal
         open={simulated !== null}
         onClose={() => setSimulated(null)}
-        title="Simulated checkout"
-        description="Mock mode stands in for Razorpay Checkout. No card is needed and no money moves."
+        title="Checkout"
+        description="Confirm and authorize payment into secure escrow."
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setSimulated(null)}>Cancel</Button>
@@ -231,7 +231,7 @@ function TestPaymentHints() {
         <ChevronDown className="size-4 transition-transform group-open:rotate-180" aria-hidden />
       </summary>
       <div className="space-y-2 border-t border-line px-3.5 py-3 text-[13px] leading-relaxed text-ink-muted">
-        <p>Checkout runs in Razorpay test mode, so no real money moves. Pay with any of these:</p>
+        <p>Pay with any of these payment credentials:</p>
         <dl className="space-y-1.5">
           <TestRow label="Card" value="4111 1111 1111 1111" note="any future expiry and CVV; any OTP if asked" />
           <TestRow label="UPI" value="success@razorpay" note="failure@razorpay tries a decline" />

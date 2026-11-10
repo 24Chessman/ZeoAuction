@@ -18,6 +18,9 @@ export interface MockUser {
   suspended: boolean;
   token_version: number;
   created_at: string;
+  favorite_categories?: string[];
+  onboarded?: boolean;
+  email_verified?: boolean;
 }
 
 export interface MockBid {
@@ -86,7 +89,11 @@ export const ids = {
 };
 
 function user(id: string, email: string, name: string, role: Role, kyc: KycStatus, created: string): MockUser {
-  return { id, email, password: DEV_PASSWORD, display_name: name, role, kyc_status: kyc, suspended: false, token_version: 1, created_at: created };
+  return {
+    id, email, password: DEV_PASSWORD, display_name: name, role, kyc_status: kyc,
+    suspended: false, token_version: 1, created_at: created,
+    favorite_categories: ["watches", "cameras", "art"], onboarded: true, email_verified: true,
+  };
 }
 
 function iso(ms: number): string {
@@ -219,6 +226,7 @@ export function seedState(now = Date.now()): MockState {
       extension_seconds: policy.extensionSeconds,
       winning_bid_id: item.state === "CLOSED" ? winner : null,
       version: 1,
+      images: [],
     });
   }
 

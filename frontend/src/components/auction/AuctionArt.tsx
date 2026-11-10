@@ -4,8 +4,9 @@ import { cn } from "@/lib/cn";
 import { photoFor } from "@/lib/photos";
 
 /**
- * A listing's cover: its stock photo (src/lib/photos.ts). Until the photo loads, or if it fails,
- * a generated cover shows instead: a category glyph on a gradient seeded by the auction id.
+ * A listing's cover: the seller's first photo if there is one, otherwise a stock photo
+ * (src/lib/photos.ts). Until the photo loads, or if it fails, a generated cover shows instead:
+ * a category glyph on a gradient seeded by the auction id.
  */
 const CATEGORY: Record<string, { icon: LucideIcon; hues: [number, number] }> = {
   cameras: { icon: Camera, hues: [250, 200] },
@@ -35,10 +36,19 @@ interface Props {
   size?: "sm" | "md" | "lg";
   /** Above-the-fold covers load eagerly; grids load lazily. */
   priority?: boolean;
+  /** The seller's own photo (a signed or local URL); replaces the stock photo. */
+  src?: string | null;
+  alt?: string;
 }
 
-export function AuctionArt({ id, category, className, size = "md", priority = false }: Props) {
-  const photo = photoFor(id, category);
+export function AuctionArt(props: Props) {
+  // A new photo starts loading from scratch, so the fallback shows until it's ready.
+  return <Cover key={props.src ?? "stock"} {...props} />;
+}
+
+function Cover({ id, category, className, size = "md", priority = false, src, alt }: Props) {
+  const stock = photoFor(id, category);
+  const photo = src ? { src, alt: alt ?? "Photo of the item" } : stock;
   const [state, setState] = useState<"loading" | "loaded" | "failed">("loading");
   const entry = CATEGORY[category.toLowerCase()] ?? { icon: Package, hues: [250, 190] as [number, number] };
   const Icon = entry.icon;

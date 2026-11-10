@@ -17,7 +17,7 @@ export function AdminKycQueuePage() {
       <PageHeader
         eyebrow="Administration"
         title="KYC review queue"
-        description="Sellers whose live face check was close to the Aadhaar photo, oldest first. Clear matches verify on their own. Every decision and every photo view is audited."
+        description="Seller Aadhaar verification submissions waiting for approval, oldest first. Every decision is audited."
         actions={<Button variant="secondary" icon={<RefreshCw className="size-4" />} onClick={() => void reload()} loading={loading && Boolean(data)}>Refresh</Button>}
       />
 
@@ -35,7 +35,7 @@ export function AdminKycQueuePage() {
         ) : loading && !data ? (
           <Skeleton className="h-64 w-full rounded-2xl" />
         ) : items.length === 0 ? (
-          <EmptyState icon={<Inbox className="size-5" />} title="The queue is empty">Close face matches will appear here.</EmptyState>
+          <EmptyState icon={<Inbox className="size-5" />} title="The queue is empty">Submissions waiting for review will appear here.</EmptyState>
         ) : (
           <Card className="overflow-hidden">
             <Table>

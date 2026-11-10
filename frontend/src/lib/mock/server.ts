@@ -18,6 +18,8 @@ const STORE_KEY = "zeo.mock.v1";
 const ACCESS_TTL_SECONDS = 15 * 60;
 const MAX_QR_IMAGE_BYTES = 8 * 1024 * 1024;
 const MAX_STORED_PREVIEW = 1_500_000;
+// services/auction-orchestrator app/domain/images.py.
+const LISTING_PHOTOS = { max: 6, maxBytes: 5 * 1024 * 1024 };
 /** Same limits as services/kyc (FacePolicy). */
 const FACE = { minFrames: 3, maxFrames: 8, maxAttempts: 3, cooldownMs: 24 * 60 * 60 * 1000 };
 const COUNTED: ReadonlySet<FaceOutcome> = new Set(["NO_MATCH", "LIVENESS_FAILED"]);
@@ -53,6 +55,9 @@ function profile(user: MockUser): Profile {
   return {
     user_id: user.id, email: user.email, display_name: user.display_name, role: user.role,
     kyc_status: user.kyc_status, suspended: user.suspended, created_at: user.created_at,
+    favorite_categories: user.favorite_categories ?? [],
+    onboarded: user.onboarded ?? false,
+    email_verified: user.email_verified ?? false,
   };
 }
 
@@ -70,6 +75,8 @@ export class MockServer {
   qrCodes: (image: Blob) => Promise<string[]> = (image) => import("./qrDecoder").then((m) => m.readQrCodes(image));
   /** SubjectPublicKeyInfo of the keys a Secure QR may be signed with; UIDAI's when unset. */
   trustedQrKeys: Uint8Array<ArrayBuffer>[] | undefined = undefined;
+  private readonly otps = new Map<string, { code: string; expiresAt: number }>();
+  private readonly emailTokens = new Map<string, { userId: string; type: "VERIFY_EMAIL" | "RESET_PASSWORD"; expiresAt: number }>();
 
   constructor(private readonly storage: Storage | null = safeStorage()) {
     this.state = this.load();
@@ -89,7 +96,7 @@ export class MockServer {
       const raw = this.storage?.getItem(STORE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as { version: number } & Partial<MockState>;
-        if (parsed.version === 4) return parsed as MockState;
+        if (parsed.version === 4) return withImages(parsed as MockState);
         // The Secure QR replaced the offline XML (v4): only the summary's timestamp was renamed.
         if (parsed.version === 3) {
           const submissions = (parsed.submissions ?? []).map((s) => {
@@ -129,7 +136,7 @@ export class MockServer {
       const raw = this.storage?.getItem(STORE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as MockState;
-        if (parsed.version === 4) this.state = parsed;
+        if (parsed.version === 4) this.state = withImages(parsed);
       }
     } catch {
       // keep the in-memory state
@@ -249,13 +256,20 @@ export class MockServer {
     switch (key) {
       case "POST /api/v1/auth/register": return ok(201, this.register(json));
       case "POST /api/v1/auth/login": return ok(200, this.login(json));
+      case "POST /api/v1/auth/gmail/send-otp": return ok(200, this.sendGmailOtp(json));
+      case "POST /api/v1/auth/gmail/verify-otp": return ok(200, this.verifyGmailOtp(json));
       case "POST /api/v1/auth/refresh": return ok(200, this.refresh(json));
       case "POST /api/v1/auth/logout":
         delete this.state.refresh[String(json.refresh_token)];
         this.persist();
         return ok(204, null);
+      case "POST /api/v1/auth/verify-email": return ok(200, this.verifyEmailToken(json));
+      case "POST /api/v1/auth/resend-verification": return ok(200, this.resendVerification(json));
+      case "POST /api/v1/auth/forgot-password": return ok(200, this.forgotPassword(json));
+      case "POST /api/v1/auth/reset-password": return ok(200, this.resetPassword(json));
       case "GET /api/v1/users/me": return ok(200, profile(this.auth(req)));
       case "PATCH /api/v1/users/me": return ok(200, this.updateMe(req, json));
+      case "PUT /api/v1/users/me/preferences": return ok(200, this.updatePreferences(req, json));
       case "GET /api/v1/auctions": return ok(200, this.listAuctions(req));
       case "POST /api/v1/auctions": return ok(201, this.createAuction(req, json));
       case "GET /api/v1/fees/quote": return ok(200, this.quote(params.get("bid_amount") ?? ""));
@@ -268,6 +282,8 @@ export class MockServer {
     if ((m = path.match(/^\/api\/v1\/auctions\/([^/]+)\/(publish|cancel|events)$/)) && req.method === "POST") {
       return ok(200, this.auctionCommand(req, m[1], m[2], json));
     }
+    if ((m = path.match(/^\/api\/v1\/auctions\/([^/]+)\/images$/)) && req.method === "POST") return ok(201, await this.addImage(req, m[1]));
+    if ((m = path.match(/^\/api\/v1\/auctions\/([^/]+)\/images\/([^/]+)$/)) && req.method === "DELETE") return ok(200, this.removeImage(req, m[1], m[2]));
     if ((m = path.match(/^\/api\/v1\/auctions\/([^/]+)\/order$/)) && req.method === "GET") {
       const auctionId = m[1];
       return ok(200, this.orderView(req, this.state.orders.find((o) => o.auction_id === auctionId)));
@@ -307,7 +323,14 @@ export class MockServer {
     const refresh = `rt_${crypto.randomUUID().replace(/-/g, "")}`;
     this.state.refresh[refresh] = user.id;
     this.persist();
-    return { access_token: this.token(user), refresh_token: refresh, token_type: "Bearer", expires_in: ACCESS_TTL_SECONDS, user: profile(user) };
+    return {
+      access_token: this.token(user),
+      refresh_token: refresh,
+      token_type: "Bearer",
+      expires_in: ACCESS_TTL_SECONDS,
+      user: profile(user),
+      is_first_login: !user.onboarded,
+    };
   }
 
   /** Decode a mock access token: mock.<user_id>.<token_version>.<expires_ms>. */
@@ -365,9 +388,118 @@ export class MockServer {
     if (this.state.users.some((u) => u.email === email)) throw new HttpError(409, "EMAIL_ALREADY_REGISTERED", "An account with this email exists");
     const user: MockUser = {
       id: crypto.randomUUID(), email, password, display_name: name, role: "USER", kyc_status: "NOT_SUBMITTED",
-      suspended: false, token_version: 1, created_at: iso(),
+      suspended: false, token_version: 1, created_at: iso(), favorite_categories: [], onboarded: false,
+      email_verified: false,
     };
     this.state.users.push(user);
+    this.persist();
+    const token = crypto.randomUUID().replace(/-/g, "");
+    this.emailTokens.set(token, { userId: user.id, type: "VERIFY_EMAIL", expiresAt: now() + 24 * 60 * 60 * 1000 });
+    return profile(user);
+  }
+
+  private sendGmailOtp(body: Record<string, unknown>) {
+    const email = String(body.email ?? "").trim().toLowerCase();
+    if (email.length > 254 || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw validation("email", "Enter a valid email address");
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    this.otps.set(email, { code, expiresAt: now() + 10 * 60 * 1000 });
+    return { status: "sent", email, expires_in: 600, dev_otp: code };
+  }
+
+  private verifyGmailOtp(body: Record<string, unknown>) {
+    const email = String(body.email ?? "").trim().toLowerCase();
+    const code = String(body.otp ?? "").trim();
+    const entry = this.otps.get(email);
+    if (!entry || entry.code !== code || entry.expiresAt < now()) {
+      throw new HttpError(401, "INVALID_OTP", "The verification code is incorrect or expired");
+    }
+    this.otps.delete(email);
+
+    let user = this.state.users.find((u) => u.email === email);
+    let isFirstLogin = false;
+    if (!user) {
+      isFirstLogin = true;
+      const rawName = String(body.display_name ?? "").trim() || email.split("@")[0] || "User";
+      user = {
+        id: crypto.randomUUID(),
+        email,
+        password: "zeo-dev-password",
+        display_name: rawName.slice(0, 80),
+        role: "USER",
+        kyc_status: "NOT_SUBMITTED",
+        suspended: false,
+        token_version: 1,
+        created_at: iso(),
+        favorite_categories: [],
+        onboarded: false,
+        email_verified: true,
+      };
+      this.state.users.push(user);
+      this.persist();
+    } else {
+      user.email_verified = true;
+      this.persist();
+      isFirstLogin = !user.onboarded;
+    }
+    const pair = this.pair(user);
+    return { ...pair, is_first_login: isFirstLogin };
+  }
+
+  private verifyEmailToken(body: Record<string, unknown>) {
+    const token = String(body.token ?? "");
+    const entry = this.emailTokens.get(token);
+    if (!entry || entry.type !== "VERIFY_EMAIL" || entry.expiresAt < now()) {
+      throw new HttpError(400, "INVALID_TOKEN", "Verification link is invalid or has expired");
+    }
+    this.emailTokens.delete(token);
+    const user = this.state.users.find((u) => u.id === entry.userId);
+    if (!user) throw new HttpError(404, "NOT_FOUND", "User not found");
+    user.email_verified = true;
+    this.persist();
+    return { status: "verified", email: user.email };
+  }
+
+  private resendVerification(body: Record<string, unknown>) {
+    const email = String(body.email ?? "").trim().toLowerCase();
+    const user = this.state.users.find((u) => u.email === email);
+    if (!user) return { status: "sent", email }; // don't reveal non-existence
+    const token = crypto.randomUUID().replace(/-/g, "");
+    this.emailTokens.set(token, { userId: user.id, type: "VERIFY_EMAIL", expiresAt: now() + 24 * 60 * 60 * 1000 });
+    return { status: "sent", email };
+  }
+
+  private forgotPassword(body: Record<string, unknown>) {
+    const email = String(body.email ?? "").trim().toLowerCase();
+    const user = this.state.users.find((u) => u.email === email);
+    if (!user) return { status: "sent", email }; // don't reveal non-existence
+    const token = crypto.randomUUID().replace(/-/g, "");
+    this.emailTokens.set(token, { userId: user.id, type: "RESET_PASSWORD", expiresAt: now() + 60 * 60 * 1000 });
+    return { status: "sent", email };
+  }
+
+  private resetPassword(body: Record<string, unknown>) {
+    const token = String(body.token ?? "");
+    const newPassword = String(body.new_password ?? "");
+    const entry = this.emailTokens.get(token);
+    if (!entry || entry.type !== "RESET_PASSWORD" || entry.expiresAt < now()) {
+      throw new HttpError(400, "INVALID_TOKEN", "Reset link is invalid or has expired");
+    }
+    if (newPassword.length < 10 || newPassword.length > 128) throw validation("new_password", "Password must be 10 to 128 characters");
+    if (/^[A-Za-z]+$/.test(newPassword) || /^\d+$/.test(newPassword)) throw validation("new_password", "Password must mix letters with digits or symbols");
+    this.emailTokens.delete(token);
+    const user = this.state.users.find((u) => u.id === entry.userId);
+    if (!user) throw new HttpError(404, "NOT_FOUND", "User not found");
+    user.password = newPassword;
+    this.persist();
+    return { status: "password_updated" };
+  }
+
+  private updatePreferences(req: TransportRequest, body: Record<string, unknown>): Profile {
+    const user = this.auth(req);
+    const raw = Array.isArray(body.favorite_categories) ? body.favorite_categories : [];
+    const valid = ["watches", "cameras", "jewelry", "music", "furniture", "books", "art", "electronics"];
+    user.favorite_categories = [...new Set(raw.map(String).map((c) => c.toLowerCase()).filter((c) => valid.includes(c)))];
+    user.onboarded = body.onboarded !== undefined ? Boolean(body.onboarded) : true;
     this.persist();
     return profile(user);
   }
@@ -376,6 +508,9 @@ export class MockServer {
     const email = String(body.email ?? "").trim().toLowerCase();
     const user = this.state.users.find((u) => u.email === email);
     if (!user || user.password !== body.password) throw new HttpError(401, "INVALID_CREDENTIALS", "Email or password is incorrect");
+    if (!user.email_verified) {
+      throw new HttpError(403, "EMAIL_NOT_VERIFIED", "Please verify your email address before logging in. Check your inbox for the verification link.", { email: user.email });
+    }
     return this.pair(user);
   }
 
@@ -391,9 +526,19 @@ export class MockServer {
 
   private updateMe(req: TransportRequest, body: Record<string, unknown>): Profile {
     const user = this.auth(req);
-    const name = String(body.display_name ?? "").trim();
-    if (name.length < 1 || name.length > 80) throw validation("display_name", "Display name must be 1 to 80 characters");
-    user.display_name = name;
+    if ("display_name" in body && body.display_name !== undefined) {
+      const name = String(body.display_name ?? "").trim();
+      if (name.length < 1 || name.length > 80) throw validation("display_name", "Display name must be 1 to 80 characters");
+      user.display_name = name;
+    }
+    if ("favorite_categories" in body && body.favorite_categories !== undefined) {
+      const raw = Array.isArray(body.favorite_categories) ? body.favorite_categories : [];
+      const valid = ["watches", "cameras", "jewelry", "music", "furniture", "books", "art", "electronics"];
+      user.favorite_categories = [...new Set(raw.map(String).map((c) => c.toLowerCase()).filter((c) => valid.includes(c)))];
+    }
+    if ("onboarded" in body && body.onboarded !== undefined) {
+      user.onboarded = Boolean(body.onboarded);
+    }
     this.persist();
     return profile(user);
   }
@@ -431,8 +576,48 @@ export class MockServer {
       starting_price: starting, reserve_price: reserve, currency: String(body.currency ?? policy.currency), state: "DRAFT",
       opens_at: opens, closes_at: closes, original_closes_at: closes, extension_count: 0, max_extensions: policy.maxExtensions,
       guard_interval_seconds: policy.guardSeconds, extension_seconds: policy.extensionSeconds, winning_bid_id: null, version: 1,
+      images: [],
     };
     this.state.auctions.unshift(auction);
+    this.persist();
+    return auction;
+  }
+
+  /** The seller's own auction, while its photos may still change (DRAFT or SCHEDULED). */
+  private editablePhotos(req: TransportRequest, id: string): Auction {
+    const seller = this.verifiedSeller(req);
+    const auction = this.auction(id);
+    if (auction.seller_id !== seller.id) throw new HttpError(403, "FORBIDDEN", "Only the seller can change this auction's photos");
+    if (auction.state !== "DRAFT" && auction.state !== "SCHEDULED") {
+      throw new HttpError(409, "CONFLICT", `Photos can only change while the auction is DRAFT or SCHEDULED, not ${auction.state}`, { state: auction.state });
+    }
+    return auction;
+  }
+
+  private async addImage(req: TransportRequest, id: string): Promise<Auction> {
+    const auction = this.editablePhotos(req, id);
+    const image = (req.body instanceof FormData ? req.body : new FormData()).get("image");
+    const invalid = (reason: string, message: string) => new HttpError(422, "VALIDATION_ERROR", message, { field: "image", reason });
+    if (!(image instanceof Blob) || image.size === 0) throw invalid("empty", "The photo is empty");
+    if (image.size > LISTING_PHOTOS.maxBytes) throw invalid("too_large", "Each photo must be at most 5 MB");
+    if (!isImage((await readBytes(image.slice(0, 12))))) throw invalid("unsupported_format", "Only JPEG, PNG and WebP photos are accepted");
+    const taken = new Set(auction.images.map((i) => i.position));
+    const position = [...Array(LISTING_PHOTOS.max).keys()].find((p) => !taken.has(p));
+    if (position === undefined) throw invalid("too_many", `An auction can have at most ${LISTING_PHOTOS.max} photos`);
+    // Small photos survive a reload as data URLs; larger ones last for this tab only.
+    const url = image.size <= MAX_STORED_PREVIEW ? await readDataUrl(image) : null;
+    auction.images = [...auction.images, {
+      image_id: crypto.randomUUID(), position, mime_type: image.type || "image/jpeg",
+      url: url ?? (typeof URL.createObjectURL === "function" ? URL.createObjectURL(image) : ""),
+    }].sort((a, b) => a.position - b.position);
+    this.persist();
+    return auction;
+  }
+
+  private removeImage(req: TransportRequest, id: string, imageId: string): Auction {
+    const auction = this.editablePhotos(req, id);
+    if (!auction.images.some((i) => i.image_id === imageId)) throw new HttpError(404, "NOT_FOUND", `Photo ${imageId} does not exist`);
+    auction.images = auction.images.filter((i) => i.image_id !== imageId);
     this.persist();
     return auction;
   }
@@ -597,7 +782,7 @@ export class MockServer {
       convenience_fee: fee, total, currency: policy.currency, fee_version: policy.feeVersion,
       provider: "mock", payment_due_at: iso(at + policy.paymentWindowHours * 3_600_000), authorized_at: null,
       created_at: issued, updated_at: issued, test_mode: true,
-      notice: "Test mode: escrow is a simulation and no real money moves.",
+      notice: "Payment is held in secure escrow until order delivery is confirmed.",
       invoice: {
         invoice_number: invoiceNumber, bid_amount: toMoneyString(winner.amount), convenience_fee: fee, total,
         currency: policy.currency, fee_version: policy.feeVersion, issued_at: issued, voided_at: null,
@@ -894,8 +1079,8 @@ export class MockServer {
         sha256: fakeDigest(`face:${submission.id}:${now()}`), name: "face-capture.jpg",
         data_url: best.size <= MAX_STORED_PREVIEW ? await readDataUrl(best) : null,
       });
-      submission.state = outcome === "MATCH" ? "VERIFIED" : "UNDER_REVIEW";
-      if (outcome === "MATCH") submission.decided_at = iso();
+      // Even a clear match waits in the admin queue: only an administrator verifies a seller.
+      submission.state = "UNDER_REVIEW";
       this.setStatus(user.id, submission.state);
     } else if (this.counted(submission) >= FACE.maxAttempts) {
       submission.state = "REJECTED";
@@ -1002,7 +1187,6 @@ function fakeDigest(seed: string): string {
   return out.slice(0, 64);
 }
 
-/** Blob bytes, through FileReader where Blob.arrayBuffer is missing (older browsers, jsdom). */
 /** JPEG, PNG or WebP, by magic number (the server sniffs the same way). */
 function isImage(b: Uint8Array): boolean {
   const jpeg = b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff;
@@ -1011,6 +1195,7 @@ function isImage(b: Uint8Array): boolean {
   return jpeg || png || (ascii(0, 4) === "RIFF" && ascii(8, 12) === "WEBP");
 }
 
+/** Blob bytes, through FileReader where Blob.arrayBuffer is missing (older browsers, jsdom). */
 function readBytes(blob: Blob): Promise<Uint8Array> {
   if (typeof blob.arrayBuffer === "function") return blob.arrayBuffer().then((buffer) => new Uint8Array(buffer));
   return new Promise((resolve) => {
@@ -1019,6 +1204,12 @@ function readBytes(blob: Blob): Promise<Uint8Array> {
     reader.onerror = () => resolve(new Uint8Array());
     reader.readAsArrayBuffer(blob);
   });
+}
+
+/** State saved before listing photos existed has auctions without an images list. */
+function withImages(state: MockState): MockState {
+  for (const auction of state.auctions) auction.images ??= [];
+  return state;
 }
 
 function readDataUrl(file: Blob): Promise<string | null> {

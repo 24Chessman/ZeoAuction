@@ -1,15 +1,14 @@
-import { Check, Clock3, Fingerprint, ScanFace, ShieldAlert, ShieldCheck, X } from "lucide-react";
+import { Check, Clock3, Fingerprint, ShieldAlert, ShieldCheck, X } from "lucide-react";
 import type { KycStatus } from "@/lib/api";
 import { cn } from "@/lib/cn";
 
 /**
  * The KYC state machine as a progress strip (docs/state-machines.md §3): the Aadhaar offline
- * e-KYC, then the live face check (or a manual review when it was close), then verified, with
- * REJECTED and SUSPENDED as the off-ramps.
+ * e-KYC, administrative review, then verified, with REJECTED and SUSPENDED as the off-ramps.
  */
 const STEPS = [
   { id: "AADHAAR", label: "Aadhaar e-KYC", icon: Fingerprint },
-  { id: "FACE", label: "Face check", icon: ScanFace },
+  { id: "REVIEW", label: "Admin review", icon: Clock3 },
   { id: "VERIFIED", label: "Verified", icon: ShieldCheck },
 ] as const;
 
@@ -33,7 +32,7 @@ export function KycStatusStrip({ status }: { status: KycStatus }) {
         const done = index < at || (index === at && status === "VERIFIED");
         const current = index === at && !done;
         const Icon = isLast && failed ? (status === "REJECTED" ? X : ShieldAlert) : done ? Check : current ? Clock3 : step.icon;
-        const label = isLast && failed ? (status === "REJECTED" ? "Rejected" : "Suspended") : step.id === "FACE" && status === "UNDER_REVIEW" ? "Manual review" : step.label;
+        const label = isLast && failed ? (status === "REJECTED" ? "Rejected" : "Suspended") : step.label;
         return (
           <li key={step.id} className="flex flex-col gap-2" aria-current={current || (isLast && failed) ? "step" : undefined}>
             <div

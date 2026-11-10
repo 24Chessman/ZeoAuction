@@ -28,11 +28,11 @@ export function AuthLayout({ title, subtitle, children, footer }: { title: strin
           </p>
           <ul className="mt-8 space-y-3">
             <Point icon={<BadgeCheck className="size-[18px]" aria-hidden />}>Sellers are verified before they list</Point>
-            <Point icon={<Landmark className="size-[18px]" aria-hidden />}>Payment held in escrow for {policy.protectionDays} days (simulated)</Point>
+            <Point icon={<Landmark className="size-[18px]" aria-hidden />}>Payment held in escrow for {policy.protectionDays} days</Point>
             <Point icon={<Timer className="size-[18px]" aria-hidden />}>{formatMoney(policy.feeCents, policy.currency)} flat fee, only if you win</Point>
           </ul>
           <p className="mt-10 text-xs text-white/50">
-            Test mode. No real money moves. Photo: {photo.photographer} on Pexels.
+            Photo: {photo.photographer} on Pexels.
           </p>
         </div>
       </aside>

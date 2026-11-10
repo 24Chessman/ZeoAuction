@@ -1,16 +1,18 @@
 import { useState, type FormEvent } from "react";
-import { ArrowRight, BadgeCheck, CalendarDays, Mail, ShieldCheck, UserRound } from "lucide-react";
+import { ArrowRight, BadgeCheck, CalendarDays, Mail, ShieldCheck, SlidersHorizontal, Sparkles, UserRound } from "lucide-react";
 import { useAuth } from "@/app/auth";
 import { OrdersCard } from "@/components/auction/OrdersCard";
 import { Banner, Button, ButtonLink, Card, CardBody, CardHeader, Field, Input, KycBadge, PageHeader, useToast } from "@/components/ui";
+import { CategoryOnboardingModal } from "@/components/recommendations/CategoryOnboardingModal";
 import { describeError } from "@/lib/errors";
-import { formatDate, initials } from "@/lib/format";
+import { formatDate, initials, titleCase } from "@/lib/format";
 
 export function AccountPage() {
   const { user, updateName } = useAuth();
   const toast = useToast();
   const [name, setName] = useState(user?.display_name ?? "");
   const [busy, setBusy] = useState(false);
+  const [interestsOpen, setInterestsOpen] = useState(false);
   const [error, setError] = useState<unknown>(null);
   if (!user) return null;
 
@@ -86,6 +88,53 @@ export function AccountPage() {
           </Card>
 
           <Card>
+            <CardHeader
+              title={
+                <div className="flex items-center gap-2">
+                  <Sparkles className="size-4 text-brand" />
+                  <span>Favorite Categories & Recommendations</span>
+                </div>
+              }
+              description="Auctions in these categories are automatically suggested on your home feed and curated in the 'For you' tab."
+            />
+            <CardBody>
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between rounded-2xl border border-line p-4">
+                <div className="space-y-1.5">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-ink-faint">
+                    Selected Interests ({user.favorite_categories?.length ?? 0})
+                  </p>
+                  {user.favorite_categories && user.favorite_categories.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {user.favorite_categories.map((cat) => (
+                        <span
+                          key={cat}
+                          className="rounded-full border border-brand/20 bg-brand-soft px-3 py-1 text-xs font-semibold text-brand-ink"
+                        >
+                          {titleCase(cat)}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-ink-muted">
+                      No categories selected yet. Pick your favorite categories to enable personalized recommendations.
+                    </p>
+                  )}
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setInterestsOpen(true)}
+                  className="shrink-0"
+                  icon={<SlidersHorizontal className="size-3.5" />}
+                >
+                  Edit Interests
+                </Button>
+              </div>
+            </CardBody>
+          </Card>
+
+          <Card>
             <CardHeader title="Selling on ZeoAuction" description="Bidding needs no verification. Listing an item does." />
             <CardBody>
               <div className="flex flex-col gap-4 rounded-2xl border border-line p-4 sm:flex-row sm:items-center">
@@ -97,7 +146,7 @@ export function AccountPage() {
                     {user.kyc_status === "VERIFIED" ? "You're a verified seller" : user.kyc_status === "NOT_SUBMITTED" ? "Not verified yet" : "Verification in progress"}
                   </p>
                   <p className="text-sm text-ink-muted">
-                    {user.kyc_status === "VERIFIED" ? "You can create and publish auctions." : "Verify with your Aadhaar QR code and a quick face check."}
+                    {user.kyc_status === "VERIFIED" ? "You can create and publish auctions." : "Verify with your Aadhaar QR code to start selling."}
                   </p>
                 </div>
                 <ButtonLink to={user.kyc_status === "VERIFIED" ? "/sell" : "/sell/verify"} variant="secondary" iconRight={<ArrowRight className="size-4" />}>
@@ -108,6 +157,11 @@ export function AccountPage() {
           </Card>
         </div>
       </div>
+
+      <CategoryOnboardingModal
+        forcedOpen={interestsOpen}
+        onClose={() => setInterestsOpen(false)}
+      />
     </div>
   );
 }

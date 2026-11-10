@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { authApi, refreshSession, session, type Profile } from "@/lib/api";
+import { authApi, refreshSession, session, type Profile, type RegisterResult } from "@/lib/api";
 import type { SessionState } from "@/lib/api/session";
 
 type Status = "loading" | "signed-in" | "signed-out";
@@ -8,13 +8,16 @@ interface AuthValue {
   status: Status;
   user: Profile | null;
   login: (email: string, password: string) => Promise<Profile>;
-  register: (input: { email: string; password: string; display_name: string }) => Promise<Profile>;
+  register: (input: { email: string; password: string; display_name: string }) => Promise<RegisterResult>;
+  sendGmailOtp: (email: string) => Promise<{ status: string; email: string; expires_in: number; dev_otp?: string }>;
+  loginWithGmailOtp: (email: string, otp: string, displayName?: string) => Promise<{ profile: Profile; isFirstLogin: boolean }>;
   logout: () => Promise<void>;
   /** Re-read /users/me, e.g. after a KYC submission changes kyc_status. */
   reload: () => Promise<Profile | null>;
   /** Force a token refresh so new claims (KYC approval) reach the gateway. */
   refreshClaims: () => Promise<void>;
   updateName: (name: string) => Promise<Profile>;
+  updatePreferences: (categories: string[]) => Promise<Profile>;
 }
 
 const AuthContext = createContext<AuthValue | null>(null);
@@ -66,11 +69,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const register = useCallback(
     async (input: { email: string; password: string; display_name: string }) => {
-      await authApi.register(input);
-      return login(input.email, input.password);
+      return authApi.register(input);
     },
-    [login],
+    [],
   );
+
+  const sendGmailOtp = useCallback(async (email: string) => {
+    return authApi.sendGmailOtp(email);
+  }, []);
+
+  const loginWithGmailOtp = useCallback(async (email: string, otp: string, displayName?: string) => {
+    const pair = await authApi.verifyGmailOtp(email, otp, displayName);
+    session.establish(pair);
+    return { profile: pair.user, isFirstLogin: pair.is_first_login ?? !pair.user.onboarded };
+  }, []);
+
+  const updatePreferences = useCallback(async (categories: string[]) => {
+    const me = await authApi.updatePreferences(categories);
+    session.updateUser(me);
+    return me;
+  }, []);
 
   const logout = useCallback(async () => {
     const token = session.refreshToken();
@@ -96,8 +114,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<AuthValue>(
-    () => ({ status, user: state.user, login, register, logout, reload, refreshClaims, updateName }),
-    [status, state.user, login, register, logout, reload, refreshClaims, updateName],
+    () => ({
+      status,
+      user: state.user,
+      login,
+      register,
+      sendGmailOtp,
+      loginWithGmailOtp,
+      logout,
+      reload,
+      refreshClaims,
+      updateName,
+      updatePreferences,
+    }),
+    [status, state.user, login, register, sendGmailOtp, loginWithGmailOtp, logout, reload, refreshClaims, updateName, updatePreferences],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

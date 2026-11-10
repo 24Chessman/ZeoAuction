@@ -58,7 +58,7 @@ export function OrdersCard({ userId }: { userId: string }) {
               return (
                 <li key={order.order_id}>
                   <Link to={`/auctions/${auction.auction_id}`} className="group flex items-center gap-3.5 px-4 py-3 hover:bg-surface-2/50">
-                    <AuctionArt id={auction.auction_id} category={auction.category} size="sm" className="size-12 shrink-0 rounded-xl" />
+                    <AuctionArt id={auction.auction_id} category={auction.category} src={auction.images?.[0]?.url} size="sm" className="size-12 shrink-0 rounded-xl" />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium group-hover:text-brand-ink">{auction.title}</p>
                       <p className="text-xs text-ink-faint">

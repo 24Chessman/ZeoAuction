@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { Gavel, Search, SearchX } from "lucide-react";
+import { Gavel, Search, SearchX, SlidersHorizontal, Sparkles } from "lucide-react";
+import { useAuth } from "@/app/auth";
 import { auctionApi, bidApi, type Auction } from "@/lib/api";
 import { useMocks } from "@/lib/config";
 import { cn } from "@/lib/cn";
@@ -10,15 +11,9 @@ import { policy } from "@/lib/policy";
 import { useAsync } from "@/lib/useAsync";
 import { Banner, Button, EmptyState, Input, PageHeader } from "@/components/ui";
 import { AuctionCard, AuctionCardSkeleton } from "@/components/auction/AuctionCard";
+import { CategoryOnboardingModal } from "@/components/recommendations/CategoryOnboardingModal";
 
-type Filter = "live" | "upcoming" | "ended" | "all";
-
-const FILTERS: Array<{ id: Filter; label: string; states: Auction["state"][] }> = [
-  { id: "live", label: "Live now", states: ["OPEN", "EXTENDED", "CLOSING"] },
-  { id: "upcoming", label: "Upcoming", states: ["SCHEDULED"] },
-  { id: "ended", label: "Ended", states: ["CLOSED", "SETTLED"] },
-  { id: "all", label: "All", states: [] },
-];
+type Filter = "recommended" | "live" | "upcoming" | "ended" | "all";
 
 interface Row {
   auction: Auction;
@@ -41,27 +36,61 @@ async function loadRows(): Promise<Row[]> {
 }
 
 export function AuctionsPage() {
+  const { user } = useAuth();
   const { data, error, loading, reload } = useAsync(loadRows, []);
   const [filter, setFilter] = useState<Filter>("live");
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string | null>(null);
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
+
+  const favCategories = useMemo(() => {
+    return (user?.favorite_categories ?? []).map((c) => c.toLowerCase());
+  }, [user?.favorite_categories]);
+
+  const filters = useMemo(() => {
+    const list: Array<{ id: Filter; label: string; states: Auction["state"][] }> = [];
+    if (favCategories.length > 0) {
+      list.push({ id: "recommended", label: "For you", states: [] });
+    }
+    list.push(
+      { id: "live", label: "Live now", states: ["OPEN", "EXTENDED", "CLOSING"] },
+      { id: "upcoming", label: "Upcoming", states: ["SCHEDULED"] },
+      { id: "ended", label: "Ended", states: ["CLOSED", "SETTLED"] },
+      { id: "all", label: "All", states: [] },
+    );
+    return list;
+  }, [favCategories.length]);
 
   const categories = useMemo(() => [...new Set((data ?? []).map((r) => r.auction.category))].sort(), [data]);
 
   const rows = useMemo(() => {
-    const states = FILTERS.find((f) => f.id === filter)?.states ?? [];
+    const currentFilter = filters.find((f) => f.id === filter);
+    const states = currentFilter?.states ?? [];
     const q = query.trim().toLowerCase();
+
     return (data ?? [])
-      .filter((r) => states.length === 0 || states.includes(r.auction.state))
+      .filter((r) => {
+        if (filter === "recommended") {
+          return favCategories.includes(r.auction.category.toLowerCase());
+        }
+        return states.length === 0 || states.includes(r.auction.state);
+      })
       .filter((r) => !category || r.auction.category === category)
       .filter((r) => !q || r.auction.title.toLowerCase().includes(q) || r.auction.description.toLowerCase().includes(q))
       .sort((a, b) => Date.parse(a.auction.closes_at ?? "9999") - Date.parse(b.auction.closes_at ?? "9999"));
-  }, [data, filter, query, category]);
+  }, [data, filter, filters, favCategories, query, category]);
 
   const counts = useMemo(() => {
     const all = data ?? [];
-    return Object.fromEntries(FILTERS.map((f) => [f.id, f.states.length ? all.filter((r) => f.states.includes(r.auction.state)).length : all.length]));
-  }, [data]);
+    return Object.fromEntries(
+      filters.map((f) => {
+        if (f.id === "recommended") {
+          return [f.id, all.filter((r) => favCategories.includes(r.auction.category.toLowerCase())).length];
+        }
+        return [f.id, f.states.length ? all.filter((r) => f.states.includes(r.auction.state)).length : all.length];
+      }),
+    );
+  }, [data, filters, favCategories]);
 
   return (
     <div className="mx-auto max-w-page px-4 py-12 sm:px-6">
@@ -73,7 +102,7 @@ export function AuctionsPage() {
 
       <div className="mt-8 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex gap-1 overflow-x-auto rounded-full border border-line bg-surface p-1 shadow-card" role="tablist" aria-label="Auction status">
-          {FILTERS.map((f) => (
+          {filters.map((f) => (
             <button
               key={f.id}
               role="tab"
@@ -84,25 +113,64 @@ export function AuctionsPage() {
                 filter === f.id ? "bg-ink text-canvas" : "text-ink-muted hover:bg-surface-2 hover:text-ink",
               )}
             >
+              {f.id === "recommended" && <Sparkles className="size-3.5 text-brand" />}
               {f.id === "live" && <span className="size-2 rounded-full bg-brand" />}
               {f.label}
-              {data && <span className={cn("tnum rounded-full px-1.5 text-xs", filter === f.id ? "bg-canvas/20 text-canvas" : "bg-surface-2 text-ink-faint")}>{counts[f.id]}</span>}
+              {data && (
+                <span
+                  className={cn(
+                    "tnum rounded-full px-1.5 text-xs",
+                    filter === f.id ? "bg-canvas/20 text-canvas" : "bg-surface-2 text-ink-faint",
+                  )}
+                >
+                  {counts[f.id] ?? 0}
+                </span>
+              )}
             </button>
           ))}
         </div>
-        <div className="w-full lg:w-80">
-          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search auctions" aria-label="Search auctions" leading={<Search className="size-4" />} />
+        <div className="flex items-center gap-2 w-full lg:w-auto">
+          <div className="w-full lg:w-72">
+            <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search auctions" aria-label="Search auctions" leading={<Search className="size-4" />} />
+          </div>
+          {user && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setOnboardingOpen(true)}
+              className="shrink-0 text-xs font-semibold"
+              icon={<SlidersHorizontal className="size-3.5" />}
+            >
+              Interests
+            </Button>
+          )}
         </div>
       </div>
 
       {categories.length > 1 && (
-        <div className="mt-4 flex flex-wrap gap-2">
+        <div className="mt-4 flex flex-wrap gap-2 items-center">
           <Chip active={category === null} onClick={() => setCategory(null)}>All categories</Chip>
           {categories.map((c) => (
             <Chip key={c} active={category === c} onClick={() => setCategory(category === c ? null : c)}>
               {titleCase(c)}
             </Chip>
           ))}
+        </div>
+      )}
+
+      {filter === "recommended" && favCategories.length > 0 && (
+        <div className="mt-4 flex items-center justify-between rounded-2xl border border-brand/20 bg-brand-soft/40 px-4 py-2.5 text-xs text-brand-ink">
+          <span>
+            ✨ Showing recommendations based on your favorite categories:{" "}
+            <strong>{favCategories.map((c) => titleCase(c)).join(", ")}</strong>
+          </span>
+          <button
+            type="button"
+            onClick={() => setOnboardingOpen(true)}
+            className="underline font-semibold hover:text-brand"
+          >
+            Edit
+          </button>
         </div>
       )}
 
@@ -118,10 +186,20 @@ export function AuctionsPage() {
         ) : rows.length === 0 ? (
           <EmptyState
             icon={query || category ? <SearchX className="size-5" /> : <Gavel className="size-5" />}
-            title={query || category ? "No auctions match" : `No ${FILTERS.find((f) => f.id === filter)?.label.toLowerCase()} auctions`}
-            action={(query || category) && <Button variant="secondary" onClick={() => { setQuery(""); setCategory(null); }}>Clear filters</Button>}
+            title={query || category ? "No auctions match" : `No ${filters.find((f) => f.id === filter)?.label.toLowerCase()} auctions`}
+            action={
+              filter === "recommended" ? (
+                <Button variant="secondary" onClick={() => setOnboardingOpen(true)}>
+                  Choose More Interests
+                </Button>
+              ) : (query || category) ? (
+                <Button variant="secondary" onClick={() => { setQuery(""); setCategory(null); }}>Clear filters</Button>
+              ) : undefined
+            }
           >
-            {!useMocks && !query && !category
+            {filter === "recommended"
+              ? "None of the active auctions match your currently selected categories."
+              : !useMocks && !query && !category
               ? "Live mode lists the featured auctions from VITE_FEATURED_AUCTIONS and the ones created in this browser."
               : "Try another tab or search."}
           </EmptyState>
@@ -135,6 +213,11 @@ export function AuctionsPage() {
           </div>
         )}
       </div>
+
+      <CategoryOnboardingModal
+        forcedOpen={onboardingOpen}
+        onClose={() => setOnboardingOpen(false)}
+      />
     </div>
   );
 }

@@ -33,17 +33,21 @@ interface Copy {
 }
 
 export const ERROR_COPY: Record<string, Copy> = {
+  EMAIL_NOT_VERIFIED: {
+    title: "Email verification required",
+    hint: "Please verify your email address before logging in. Check your inbox for the verification link.",
+  },
   // Bid taxonomy v1.0.0
   SELLER_NOT_VERIFIED: {
     title: "Seller verification required",
-    hint: "Verify with your Aadhaar QR code and a live face check before you list.",
+    hint: "Verify your identity with your Aadhaar QR code before you list.",
   },
   ACCOUNT_SUSPENDED: { title: "Your account is suspended", hint: "Contact an administrator to review it." },
   SELF_BIDDING_FORBIDDEN: { title: "You can't bid on your own auction" },
   AUCTION_NOT_OPEN: { title: "This auction isn't taking bids" },
   AUCTION_CLOSED: { title: "The auction closed before your bid was sequenced" },
   BID_BELOW_INCREMENT: { title: "Your bid is below the minimum next bid" },
-  INSUFFICIENT_FUNDS: { title: "The funds check failed", hint: "Test mode: no real funds are checked or held." },
+  INSUFFICIENT_FUNDS: { title: "The funds check failed", hint: "Please check your payment account balance." },
   AUCTION_STATE_UNAVAILABLE: {
     title: "Bidding is briefly unavailable",
     hint: "Nothing was placed. Retrying sends the same bid with the same key, so it can't be placed twice.",
@@ -63,14 +67,13 @@ export const ERROR_COPY: Record<string, Copy> = {
   EMAIL_ALREADY_REGISTERED: { title: "An account with this email already exists" },
   REFRESH_TOKEN_INVALID: { title: "Your session ended", hint: "Log in again to continue." },
   KYC_ALREADY_ACTIVE: { title: "You already have a verification in progress" },
-  KYC_COOLDOWN: { title: "Too many failed face checks", hint: "You can start again after the time shown." },
+  KYC_COOLDOWN: { title: "Verification temporarily unavailable", hint: "You can try again after the cooldown period." },
   AADHAAR_INVALID: { title: "We couldn't verify that Aadhaar file" },
-  FACE_CAPTURE_INVALID: { title: "The camera capture couldn't be used", hint: "Try the face check again." },
   // Payment codes (contracts/errors/payment-error-codes.yaml)
   ORDER_NOT_PAYABLE: { title: "This order has nothing left to pay" },
   PAYMENT_SIGNATURE_INVALID: { title: "The payment could not be verified", hint: "Nothing was captured. Try paying again." },
   PAYMENT_PROVIDER_UNAVAILABLE: { title: "The payment provider is unavailable", hint: "Nothing was charged. Try again shortly." },
-  PAYMENT_PROVIDER_ERROR: { title: "The payment provider refused the request", hint: "Test mode: check the Razorpay test keys." },
+  PAYMENT_PROVIDER_ERROR: { title: "The payment provider refused the request", hint: "Please try another card or check your payment details." },
   SETTLEMENT_CONFLICT: { title: "This auction is already being settled" },
   // Client-side, never from the server
   NETWORK_ERROR: { title: "Can't reach the server", hint: "Check your connection and try again." },

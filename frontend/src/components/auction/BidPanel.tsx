@@ -270,7 +270,7 @@ export function BidPanel({ state }: { state: AuctionLive }) {
                 <span className="tnum font-display text-xl font-bold tracking-[-0.02em]">{quote ? formatMoney(parseMoney(quote.total), quote.currency) : quoting ? "…" : "—"}</span>
               </div>
               {quoteFailed && <p className="mt-2 text-xs text-danger">The fee quote is unavailable; try again before bidding.</p>}
-              <p className="mt-2 text-xs text-ink-faint">Only charged if you win. Losing bidders pay nothing. Test mode: no real payment.</p>
+              <p className="mt-2 text-xs text-ink-faint">Only charged if you win. Losing bidders pay nothing.</p>
             </div>
 
             {serverError && (

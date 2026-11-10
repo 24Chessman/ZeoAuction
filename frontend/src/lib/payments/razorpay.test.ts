@@ -49,7 +49,7 @@ describe("Razorpay Checkout", () => {
     expect(result).toEqual({ provider_order_id: "order_ABC", payment_id: "pay_1", signature: "sig" });
     expect(seen[0]).toMatchObject({
       key: "rzp_test_ZeoAuction01", amount: 134_900, currency: "INR", order_id: "order_ABC",
-      name: "ZeoAuction (test mode)", prefill: { email: "buyer2@zeo.local" },
+      name: "ZeoAuction", prefill: { email: "buyer2@zeo.local" },
     });
   });
 
