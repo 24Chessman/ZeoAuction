@@ -31,8 +31,10 @@ from zeo_common.auth import JwtSettings, install_auth
 from zeo_common.db import create_pool, postgres_check
 from zeo_common.gateway import RedisTokenVersions, TokenVersions, install_gateway
 from zeo_common.redis import create_redis, redis_check
+from zeo_common.storage import InMemoryObjectStore, ObjectStore, S3ObjectStore, StorageSettings
 
-VERSION = "0.4.0"
+VERSION = "0.5.0"
+BUCKET = "listing-images"
 
 
 def build_app(
@@ -43,6 +45,7 @@ def build_app(
     token_versions: TokenVersions | None = None,
     jwt_settings: JwtSettings | None = None,
     payment: PaymentClient | None = None,
+    store: ObjectStore | None = None,
 ) -> FastAPI:
     """Create the service. Tests pass ``repository``; otherwise it is built at start-up."""
     settings = settings or Settings.from_env()
@@ -57,9 +60,12 @@ def build_app(
     drain_grace = timedelta(seconds=settings.drain_grace_seconds)
 
     def attach(repo: AuctionRepository, events: AuctionEventPublisher,
-               payment_client: PaymentClient | None = payment) -> AuctionService:
+               payment_client: PaymentClient | None = payment,
+               images: ObjectStore | None = None) -> AuctionService:
         service = AuctionService(repo, events, metrics, drain_grace=drain_grace,
-                                 payment=payment_client)
+                                 payment=payment_client,
+                                 images=images or store or InMemoryObjectStore(BUCKET),
+                                 image_url_ttl_seconds=settings.image_url_ttl_seconds)
         app.state.auction_service = service
         return service
 
@@ -91,7 +97,11 @@ def build_app(
                                              timeout=httpx.Timeout(5.0))
             payment_client = PaymentClient(payment_http, payment_breaker(),
                                            settings.internal_token)
-        service = attach(PostgresAuctionRepository(pool), events, payment_client)
+        images = store
+        if images is None and settings.storage == "s3":
+            # listing-images isn't encrypted at rest (docs/architecture.md), but stays private.
+            images = S3ObjectStore(StorageSettings.from_env(BUCKET, encrypted=False))
+        service = attach(PostgresAuctionRepository(pool), events, payment_client, images)
         timer = LifecycleTimer(service, settings.timer_interval_seconds)
         if settings.run_timer:
             timer.start()
@@ -123,6 +133,8 @@ def build_app(
                 await events.stop()
             if redis is not None:
                 await redis.aclose()
+            if isinstance(images, S3ObjectStore) and store is None:
+                await images.aclose()
             await pool.close()
 
     app.router.lifespan_context = lifespan

@@ -59,7 +59,7 @@ If the photo shows several QR codes (an e-Aadhaar page), the first that verifies
 
 | Outcome | When | Effect |
 |---|---|---|
-| `MATCH` | median similarity ≥ 0.42 and every frame ≥ 0.30, head turned | K3a → `VERIFIED`; best frame kept |
+| `MATCH` | median similarity ≥ 0.42 and every frame ≥ 0.30, head turned | K3a → `UNDER_REVIEW` (an administrator still approves, K3); best frame kept |
 | `REVIEW` | median ≥ 0.30, or no usable face in the Aadhaar photo | K2 → `UNDER_REVIEW`; best frame kept for the admin |
 | `NO_MATCH` | median < 0.30 | counts; the 3rd counted failure is K4a → `REJECTED` |
 | `LIVENESS_FAILED` | duplicate frames, or yaw span < 0.12 | counts |

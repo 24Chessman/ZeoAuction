@@ -54,7 +54,7 @@ def test_every_admin_row_is_accepted_from_its_from_state(event, reason):
 
 @pytest.mark.parametrize(
     ("event", "to_state"),
-    [("faceMatch", "VERIFIED"), ("faceReview", "UNDER_REVIEW"), ("faceFail", "REJECTED"),
+    [("faceMatch", "UNDER_REVIEW"), ("faceReview", "UNDER_REVIEW"), ("faceFail", "REJECTED"),
      ("withdraw", "REJECTED")],
 )
 def test_face_check_and_seller_events_leave_submitted_without_an_audit_row(event, to_state):
@@ -89,7 +89,7 @@ def test_decisions_are_stamped():
     assert (approved.decided_at, approved.decided_by) == (NOW, ADMIN)
     _, matched = plan_transition(submission("SUBMITTED"), "faceMatch", actor_id=uuid4(),
                                  reason=None, now=NOW)
-    assert (matched.decided_at, matched.decided_by) == (NOW, None)
+    assert (matched.decided_at, matched.decided_by) == (None, None)  # an admin still decides
     _, reviewing = plan_transition(submission("SUBMITTED"), "faceReview", actor_id=uuid4(),
                                    reason=None, now=NOW)
     assert (reviewing.decided_at, reviewing.decided_by) == (None, None)

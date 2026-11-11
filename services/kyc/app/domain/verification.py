@@ -1,8 +1,9 @@
 """Seller verification state machine (docs/state-machines.md section 3).
 
 Pure logic, no I/O. A submission starts when a seller's Aadhaar Secure QR verifies
-(K1), then the live face check decides it: a clear match verifies the seller (K3a), a
-borderline one goes to an administrator (K2), and the last failed attempt rejects it (K4a).
+(K1), then the live face check runs: a match, clear (K3a) or borderline (K2), puts the
+submission in the administrator queue, and the last failed attempt rejects it (K4a). Only an
+administrator verifies a seller (K3).
 Re-uploading the QR before any counted face attempt withdraws the waiting row (K4b).
 
 Every accepted transition is recorded in ``kyc_state_transitions`` with its actor, mirrored to
@@ -27,7 +28,7 @@ STATES = ("SUBMITTED", "UNDER_REVIEW", "VERIFIED", "REJECTED", "SUSPENDED")
 TRANSITIONS: dict[str, tuple[str | None, str]] = {
     "submit": (None, "SUBMITTED"),                # K1, K5: Secure QR verified
     "faceReview": ("SUBMITTED", "UNDER_REVIEW"),  # K2: borderline face match
-    "faceMatch": ("SUBMITTED", "VERIFIED"),       # K3a: clear face match
+    "faceMatch": ("SUBMITTED", "UNDER_REVIEW"),   # K3a: clear face match, still needs an admin
     "faceFail": ("SUBMITTED", "REJECTED"),        # K4a: last face attempt failed
     "withdraw": ("SUBMITTED", "REJECTED"),        # K4b: seller uploads a different QR
     "approve": ("UNDER_REVIEW", "VERIFIED"),      # K3
@@ -37,7 +38,7 @@ TRANSITIONS: dict[str, tuple[str | None, str]] = {
 }
 ADMIN_EVENTS = frozenset({"approve", "reject", "suspend", "reinstate"})
 SELLER_EVENTS = frozenset({"faceReview", "faceMatch", "faceFail", "withdraw"})
-DECIDING_EVENTS = frozenset({"approve", "reject", "faceMatch", "faceFail"})
+DECIDING_EVENTS = frozenset({"approve", "reject", "faceFail"})
 
 # admin.audit_log action names (SDD 8.8).
 AUDIT_ACTIONS = {

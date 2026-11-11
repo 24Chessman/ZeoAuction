@@ -40,3 +40,8 @@ codes:
     retryable: false
     details: [order_id]
     condition: "The auction already has an order for a different winning bid. An auction settles exactly once."
+  - code: WINDOW_CLOSED
+    http: 409
+    retryable: false
+    details: []
+    condition: "The protection window for raising a dispute on this order has expired."

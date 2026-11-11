@@ -115,6 +115,7 @@ def test_a_counted_face_attempt_locks_the_qr(harness):
 def test_a_verified_seller_cannot_upload_again(harness):
     user, submission_id = harness.submitted()
     assert harness.face(user, submission_id).json()["outcome"] == "MATCH"
+    harness.admin_post(f"{submission_id}/approve")
     response = harness.upload(user)
     assert response.status_code == 409
     assert response.json()["details"] == {"state": "VERIFIED"}

@@ -5,16 +5,17 @@ from app.domain.face import FaceReading
 from tests.support import JPEG, PNG, frame, frames, readings
 
 
-def test_a_clear_match_verifies_the_seller_at_once(harness):
+def test_a_clear_match_still_waits_for_an_administrator(harness):
     user, submission_id = harness.submitted()
     response = harness.face(user, submission_id)
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["outcome"] == "MATCH"
-    assert body["submission"]["state"] == "VERIFIED"
+    assert body["submission"]["state"] == "UNDER_REVIEW"
     assert body["submission"]["face"]["last_outcome"] == "MATCH"
-    assert harness.repo.mirror.users[user] == ("VERIFIED", 3)
-    assert harness.versions.versions[user] == 3  # the listing gate sees VERIFIED on refresh
+    assert body["submission"]["decided_at"] is None
+    assert harness.repo.mirror.users[user] == ("UNDER_REVIEW", 3)
+    assert harness.versions.versions[user] == 3
     assert [t.event for t in harness.repo.transitions] == ["submit", "faceMatch"]
     assert harness.repo.audit_log == []  # nobody but the seller acted
     # The engine compared against the template stored with the Aadhaar summary.
@@ -127,7 +128,7 @@ def test_only_the_owner_can_run_the_check_and_only_while_waiting(harness):
     harness.face(user, submission_id)
     again = harness.face(user, submission_id)
     assert again.status_code == 409
-    assert again.json()["details"] == {"state": "VERIFIED"}
+    assert again.json()["details"] == {"state": "UNDER_REVIEW"}
 
 
 def test_two_checks_at_once_cannot_both_count(harness):

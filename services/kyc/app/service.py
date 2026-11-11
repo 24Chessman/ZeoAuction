@@ -281,7 +281,7 @@ class KycService:
             submission, event, actor_id=principal.user_id, reason=self._reason(assessment),
             now=now,
         )
-        # The best frame is evidence for a match or for the reviewer; a failed one isn't kept.
+        # The best frame is evidence for the reviewer; a failed one isn't kept.
         evidence: list[tuple[Document, ValidatedUpload]] = []
         if event in ("faceMatch", "faceReview") and assessment.best_frame is not None:
             best = images[assessment.best_frame]
@@ -380,3 +380,4 @@ def kyc_blocked(latest: Submission | None, retry_after: datetime | None) -> ApiE
         "A verification is already in progress or approved",
         409, details,
     )
+

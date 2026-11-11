@@ -74,7 +74,9 @@ def test_an_admin_rejection_allows_a_new_upload_at_once(harness):
 
 def test_suspend_and_reinstate(harness):
     user, submission_id = harness.submitted()
-    harness.face(user, submission_id)  # a clear match: VERIFIED without an administrator
+    harness.face(user, submission_id)  # a clear match still goes to the queue
+    assert harness.repo.mirror.users[user][0] == "UNDER_REVIEW"
+    assert harness.admin_post(f"{submission_id}/approve").json()["state"] == "VERIFIED"
     assert harness.admin_post(f"{submission_id}/suspend",
                               {"reason_code": "bad code"}).status_code == 422
     suspended = harness.admin_post(f"{submission_id}/suspend",

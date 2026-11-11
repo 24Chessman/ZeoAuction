@@ -21,8 +21,16 @@ SCHEMA_VERSION = 1
 STEP_TYPES = ("INVOICED", "CAPTURED", "HELD", "SHIPPED", "DISPUTED", "RELEASED", "REFUNDED",
               "COMPENSATED")
 # The idempotency key of the money movement each step records.
-STEP_OPERATION = {"INVOICED": "invoice", "CAPTURED": "capture", "HELD": "hold",
-                  "COMPENSATED": "compensate-s1"}
+STEP_OPERATION = {
+    "INVOICED": "invoice",
+    "CAPTURED": "capture",
+    "HELD": "hold",
+    "SHIPPED": "ship",
+    "DISPUTED": "dispute",
+    "RELEASED": "release",
+    "REFUNDED": "refund",
+    "COMPENSATED": "compensate-s1",
+}
 
 
 def iso_utc(moment: datetime) -> str:

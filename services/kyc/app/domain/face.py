@@ -13,6 +13,9 @@ photo's template, and a yaw estimate from the landmarks. :func:`assess` decides:
    frame at least ``review_threshold``), ``REVIEW`` at or above ``review_threshold``,
    ``NO_MATCH`` below.
 
+``MATCH`` and ``REVIEW`` both send the submission to the administrator queue; the outcome is
+kept on the attempt so the reviewer sees how confident the check was.
+
 ``NO_MATCH`` and ``LIVENESS_FAILED`` count as attempts; the last allowed one rejects the
 submission (K4a), and a new upload must wait for the cooldown.
 """
