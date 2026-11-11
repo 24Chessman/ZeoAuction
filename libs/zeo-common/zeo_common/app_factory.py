@@ -17,7 +17,20 @@ API_PREFIX = "/api/v1"
 def cors_origins() -> list[str]:
     """Comma-separated ``CORS_ALLOW_ORIGINS``; empty (no CORS) unless configured."""
     raw = os.environ.get("CORS_ALLOW_ORIGINS", "")
-    return [origin.strip() for origin in raw.split(",") if origin.strip()]
+    origins = [origin.strip() for origin in raw.split(",") if origin.strip()]
+    if origins:
+        extended = list(origins)
+        for o in origins:
+            if "localhost" in o:
+                alt = o.replace("localhost", "127.0.0.1")
+                if alt not in extended:
+                    extended.append(alt)
+            elif "127.0.0.1" in o:
+                alt = o.replace("127.0.0.1", "localhost")
+                if alt not in extended:
+                    extended.append(alt)
+        return extended
+    return []
 
 
 def create_app(service_name: str, version: str = "0.1.0", description: str = "") -> FastAPI:
@@ -47,8 +60,9 @@ def create_app(service_name: str, version: str = "0.1.0", description: str = "")
         app.add_middleware(
             CORSMiddleware,
             allow_origins=origins,
-            allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE"],
-            allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "X-Request-ID"],
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
             expose_headers=["X-Request-ID", "Idempotent-Replay"],
         )
     install_error_handlers(app)
