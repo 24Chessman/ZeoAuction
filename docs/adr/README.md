@@ -8,14 +8,14 @@ the owners in Plan 7, and until then the SDD summary is binding. ADR-0009 onward
 
 | ADR | Decision | Status | Owner | Full record due |
 |---|---|---|---|---|
-| 0001 | Server-allocated `server_seq` determines bid order | Accepted (SDD) | Naitik | Plan 7 (#27) |
-| 0002 | Redis compare-and-set for current price, batched persistence | Accepted (SDD) | Sumit / Naitik | Plan 7 (#27) |
-| 0003 | Saga with compensations for settlement | Accepted (SDD) | Jaydip | Plan 7 (#68) |
-| 0004 | Escrow ledger is append-only | Accepted (SDD) | Jaydip | Plan 7 (#68) |
-| 0005 | KYC status carried as a JWT claim | Accepted (SDD) | Ayush / Sagar | Plan 7 (#49) |
-| 0006 | Escrow sweep as a platform cron job | Accepted (SDD) | Naitik / Ayush | Plan 7 (#37) |
-| 0007 | Payment behind a port with a mock adapter | Accepted (SDD) | Jaydip | Plan 7 (#68) |
-| 0008 | Fraud dataset built before the detector | Accepted (SDD) | Harshal | Plan 7 (#58) |
+| [0001](0001-bid-pipeline-and-conflict-resolution.md) | Server-allocated `server_seq` determines bid order | **Accepted** | Naitik | Plan 7 (#27) |
+| [0002](0002-redis-price-buffer.md) | Redis compare-and-set for current price, batched persistence | **Accepted** | Sumit / Naitik | Plan 7 (#27) |
+| [0003](0003-settlement-saga-and-compensation.md) | Saga with compensations for settlement | **Accepted** | Jaydip | Plan 7 (#68) |
+| [0004](0004-escrow-ledger-append-only.md) | Escrow ledger is append-only | **Accepted** | Jaydip | Plan 7 (#68) |
+| [0005](0005-kyc-jwt-claim.md) | KYC status carried as a JWT claim | **Accepted** | Ayush / Sagar | Plan 7 (#49) |
+| [0006](0006-escrow-sweep-cron.md) | Escrow sweep as a platform cron job | **Accepted** | Naitik / Ayush | Plan 7 (#37) |
+| [0007](0007-payment-port-mock.md) | Payment behind a port with a mock adapter | **Accepted** | Jaydip | Plan 7 (#68) |
+| [0008](0008-fraud-dataset-first.md) | Fraud dataset built before the detector | **Accepted** | Harshal | Plan 7 (#58) |
 | [0009](0009-payment-provider.md) | Payment provider: Razorpay test mode, INR | **Accepted** (2026-10-10) | Jaydip | Plan 1 |
 | [0010](0010-third-party-services.md) | Push notifications and image hosting | **Proposed** | Ayush / Gaurang | Plan 1 |
 | [0011](0011-settlement-policy.md) | Settlement policy numbers (₹99 fee, window, anti-snipe) | **Accepted** (2026-10-10) | Jaydip / Sumit | Plan 1 |

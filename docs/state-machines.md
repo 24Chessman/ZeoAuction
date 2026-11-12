@@ -141,7 +141,7 @@ cases itself; an administrator sees only the close ones.
 ```mermaid
 stateDiagram-v2
     [*] --> SUBMITTED: submit (Aadhaar QR verified)
-    SUBMITTED --> VERIFIED: faceMatch
+    SUBMITTED --> UNDER_REVIEW: faceMatch
     SUBMITTED --> UNDER_REVIEW: faceReview
     SUBMITTED --> REJECTED: faceFail / withdraw
     UNDER_REVIEW --> VERIFIED: approve
@@ -156,7 +156,7 @@ stateDiagram-v2
 | K1 | `submit` | – (user `NOT_SUBMITTED`) | SUBMITTED | Photo holds an Aadhaar Secure QR; UIDAI signature valid; holder 18+; mobile matches if given (QR age limit optional, off by default) | Mirror updated; Aadhaar summary, face template and photo stored |
 | K2 | `faceReview` | SUBMITTED | UNDER_REVIEW | Face check: median similarity in the review band (0.30–0.42), or no usable face in the Aadhaar photo; liveness passed | Best frame kept for the reviewer. Opening an image is itself audited |
 | K3 | `approve` | UNDER_REVIEW | VERIFIED | Admin | Mirror → VERIFIED; `token_version += 1` **forces token refresh**, so the listing gate sees it immediately |
-| K3a | `faceMatch` | SUBMITTED | VERIFIED | Face check: median ≥ 0.42, every frame ≥ 0.30, head turned | As K3, without an administrator |
+| K3a | `faceMatch` | SUBMITTED | UNDER_REVIEW | Face check: median ≥ 0.42, every frame ≥ 0.30, head turned | Best frame kept; the submission joins the admin queue like K2 (2026-10-22: every seller needs an administrator's approval, K3) |
 | K4 | `reject` | UNDER_REVIEW | REJECTED | Admin; **reason required** | Reason returned to the seller; a new upload is allowed at once |
 | K4a | `faceFail` | SUBMITTED | REJECTED | The 3rd counted face failure (`NO_MATCH` or `LIVENESS_FAILED`) | New upload refused for 24 h (`KYC_COOLDOWN`) |
 | K4b | `withdraw` | SUBMITTED | REJECTED | Seller uploads a different QR before any counted face attempt | The new upload is K5 |

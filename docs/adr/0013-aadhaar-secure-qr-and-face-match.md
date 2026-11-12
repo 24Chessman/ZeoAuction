@@ -33,8 +33,9 @@ the XML had to be under 72 h old, whereas a photo of the QR they already own wor
    default (a card's QR dates from when it was printed); `KYC_AADHAAR_MAX_AGE_HOURS` can demand a fresh e-Aadhaar.
 2. **A live face match decides the case.** The browser captures guided frames (straight, left, right). The server
    matches them to the QR's photo with **OpenCV YuNet + SFace** (Apache-2.0 models from the OpenCV zoo, CPU only, no
-   network calls) and requires a head turn as basic liveness. A clear match verifies automatically; a close one goes
-   to an administrator; three failures reject, with a 24 h cooldown before trying again.
+   network calls) and requires a head turn as basic liveness. A match (clear or close) goes to the administrator
+   queue, and an administrator approves every seller (changed 2026-10-22; a clear match used to verify on its own);
+   three failures reject, with a 24 h cooldown before trying again.
 3. **States stay the same.** `SUBMITTED` now means "Aadhaar verified, face check pending", and `UNDER_REVIEW` means
    "referred by the face check". The `auth.users.kyc_status` vocabulary, CT-2 and the listing gate don't change.
    Admin `start-review` (old K2) is removed; K2 is now the face check's referral.
@@ -55,7 +56,7 @@ the XML had to be under 72 h old, whereas a photo of the QR they already own wor
 
 ## Consequences
 
-- Most sellers verify in about two minutes without an administrator; the admin queue holds only close matches.
+- Every seller passes through the admin queue after the face check; the attempt's outcome (`MATCH` or `REVIEW`) tells the reviewer how confident the check was.
 - The KYC image grows by OpenCV (~60 MB) and the models (~39 MB, fetched and checksummed at build time).
 - The face template and photos are biometric data: the retention ADR (#49) must cover them, and the purge job
   (Plan 6) must delete `aadhaar_verifications.reference_embedding` with the images.
