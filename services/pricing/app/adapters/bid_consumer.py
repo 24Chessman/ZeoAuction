@@ -59,9 +59,12 @@ class BidEventsConsumer:
 
     @classmethod
     def connect(cls, bootstrap_servers: str, handler: Handler,
-                group_id: str = CONSUMER_GROUP) -> "BidEventsConsumer":  # pragma: no cover
+                group_id: str = CONSUMER_GROUP, **kwargs: Any) -> "BidEventsConsumer":  # pragma: no cover
         from aiokafka import AIOKafkaConsumer
+        from zeo_common import KafkaSettings
 
+        kafka_kwargs = KafkaSettings.from_env().consumer_kwargs()
+        kafka_kwargs.update(kwargs)
         consumer = AIOKafkaConsumer(
             BID_EVENTS_TOPIC,
             bootstrap_servers=bootstrap_servers,
@@ -70,6 +73,7 @@ class BidEventsConsumer:
             enable_auto_commit=False,
             # Velocity only looks back a minute: a new group starts at the head.
             auto_offset_reset="latest",
+            **kafka_kwargs,
         )
         return cls(consumer, handler)
 

@@ -23,15 +23,19 @@ class KafkaAlertProducer:
         self.topic = topic
 
     @classmethod
-    def connect(cls, bootstrap_servers: str) -> "KafkaAlertProducer":  # pragma: no cover
+    def connect(cls, bootstrap_servers: str, **kwargs: Any) -> "KafkaAlertProducer":  # pragma: no cover
         from aiokafka import AIOKafkaProducer
+        from zeo_common import KafkaSettings
 
+        kafka_kwargs = KafkaSettings.from_env().producer_kwargs()
+        kafka_kwargs.update(kwargs)
         producer = AIOKafkaProducer(
             bootstrap_servers=bootstrap_servers,
             client_id="fraud-detector",
             acks="all",
             enable_idempotence=True,
             request_timeout_ms=5000,
+            **kafka_kwargs,
         )
         return cls(producer)
 

@@ -77,9 +77,12 @@ class KafkaBidEventPublisher:
         self.topic = topic
 
     @classmethod
-    def connect(cls, bootstrap_servers: str) -> "KafkaBidEventPublisher":
+    def connect(cls, bootstrap_servers: str, **kwargs: Any) -> "KafkaBidEventPublisher":
         from aiokafka import AIOKafkaProducer
+        from zeo_common import KafkaSettings
 
+        kafka_kwargs = KafkaSettings.from_env().producer_kwargs()
+        kafka_kwargs.update(kwargs)
         producer = AIOKafkaProducer(
             bootstrap_servers=bootstrap_servers,
             client_id="bid",
@@ -87,6 +90,7 @@ class KafkaBidEventPublisher:
             enable_idempotence=True,  # a retried send never duplicates an event
             linger_ms=1,
             request_timeout_ms=5000,
+            **kafka_kwargs,
         )
         return cls(producer)
 
