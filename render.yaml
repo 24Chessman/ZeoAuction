@@ -1,25 +1,16 @@
 # Render blueprint (owner: Ayush, #97, #98). The deployment artefact of record (SDD 3.1.1, FR-INFRA-4).
 #
 # Plan 6 adds the escrow-sweep cron (#97).
-# Plan 7 adds every other service, managed PostgreSQL, managed Key Value (Redis), and
-# environment groups (#98).
+# Plan 7 adds every other service and environment groups (#98).
 #
 # First-time setup:
 #   1. Render dashboard -> New -> Blueprint -> select this repository.
-#   2. After the first deploy, copy Kafka's internal hostname into KAFKA_ADVERTISED_HOST and redeploy.
-#   3. Shell tab: /opt/zeo/create-topics.sh localhost:9092
-#   4. Shell tab: /opt/zeo/smoke-test.sh produce localhost:9092 ; restart ; verify.
+#   2. Enter the secret values for the external Neon, Aiven, Upstash and storage services.
+#   3. Apply infra/postgres/init/*.sql to Neon and run infra/kafka/create-topics.sh
+#      from a machine that can reach Aiven Kafka.
 #
 # Instance note: use the paid tier through the final demo so services don't spin down.
 # The 8 vCPU / 16 GB dedicated host for load testing is provisioned separately.
-
-databases:
-  - name: zeo-postgres
-    region: singapore
-    plan: starter
-    postgresMajorVersion: "16"
-    # Schema-per-service: each service gets its own role and schema; GRANTs are in
-    # infra/postgres/init/. Migrate once from the shell: psql $DATABASE_URL < infra/postgres/init/*.sql
 
 envVarGroups:
   - name: zeo-shared
@@ -29,11 +20,24 @@ envVarGroups:
       - key: INTERNAL_SERVICE_TOKEN
         sync: false
       - key: KAFKA_BOOTSTRAP_SERVERS
-        value: kafka://zeo-kafka:9092
-      - key: DATABASE_URL
-        fromDatabase:
-          name: zeo-postgres
-          property: connectionString
+        sync: false
+      - key: KAFKA_SECURITY_PROTOCOL
+        value: SASL_SSL
+      - key: KAFKA_SASL_MECHANISM
+        value: SCRAM-SHA-256
+      - key: KAFKA_SASL_USERNAME
+        sync: false
+      - key: KAFKA_SASL_PASSWORD
+        sync: false
+      - key: CORS_ALLOW_ORIGINS
+        sync: false
+      - key: LOG_LEVEL
+        value: INFO
+
+  - name: zeo-upstash
+    envVars:
+      - key: REDIS_URL
+        sync: false
 
   - name: zeo-razorpay
     envVars:
@@ -57,24 +61,6 @@ envVarGroups:
 
 services:
   # ------------------------------------------------------------------ Infrastructure
-
-  - type: pserv
-    name: zeo-kafka
-    runtime: docker
-    dockerfilePath: ./infra/kafka/Dockerfile
-    dockerContext: ./infra/kafka
-    plan: starter
-    region: singapore
-    numInstances: 1
-    disk:
-      name: kafka-data
-      mountPath: /var/lib/kafka/data
-      sizeGB: 10
-    envVars:
-      - key: KAFKA_ADVERTISED_HOST
-        sync: false
-      - key: SMOKE_MARKER_FILE
-        value: /var/lib/kafka/data/.smoke-marker
 
   # ------------------------------------------------------------------ Cron
 
@@ -107,14 +93,12 @@ services:
     healthCheckPath: /healthz
     envVarGroups:
       - zeo-shared
+      - zeo-upstash
     envVars:
       - key: DATABASE_URL
         sync: false
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: zeo-redis
-          property: connectionString
+      - key: FRONTEND_URL
+        sync: false
       - key: REPOSITORY
         value: postgres
       - key: PYTHON_ENV
@@ -131,6 +115,7 @@ services:
     envVarGroups:
       - zeo-shared
       - zeo-storage
+      - zeo-upstash
     envVars:
       - key: DATABASE_URL
         sync: false
@@ -149,14 +134,11 @@ services:
     healthCheckPath: /healthz
     envVarGroups:
       - zeo-shared
+      - zeo-upstash
+      - zeo-storage
     envVars:
       - key: DATABASE_URL
         sync: false
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: zeo-redis
-          property: connectionString
       - key: PAYMENT_SERVICE_URL
         value: http://zeo-payment-escrow:8000
       - key: REPOSITORY
@@ -174,14 +156,10 @@ services:
     healthCheckPath: /healthz
     envVarGroups:
       - zeo-shared
+      - zeo-upstash
     envVars:
       - key: DATABASE_URL
         sync: false
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: zeo-redis
-          property: connectionString
       - key: AUCTION_SERVICE_URL
         value: http://zeo-auction-orchestrator:8000
       - key: PRICING_SERVICE_URL
@@ -201,14 +179,10 @@ services:
     healthCheckPath: /healthz
     envVarGroups:
       - zeo-shared
+      - zeo-upstash
     envVars:
       - key: DATABASE_URL
         sync: false
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: zeo-redis
-          property: connectionString
       - key: REPOSITORY
         value: postgres
       - key: PYTHON_ENV
@@ -224,6 +198,7 @@ services:
     healthCheckPath: /healthz
     envVarGroups:
       - zeo-shared
+      - zeo-upstash
     envVars:
       - key: DATABASE_URL
         sync: false
@@ -263,6 +238,7 @@ services:
     healthCheckPath: /healthz
     envVarGroups:
       - zeo-shared
+      - zeo-upstash
     envVars:
       - key: DATABASE_URL
         sync: false
@@ -286,6 +262,7 @@ services:
     envVarGroups:
       - zeo-shared
       - zeo-storage
+      - zeo-upstash
     envVars:
       - key: DATABASE_URL
         sync: false
@@ -306,6 +283,7 @@ services:
     healthCheckPath: /healthz
     envVarGroups:
       - zeo-shared
+      - zeo-upstash
     envVars:
       - key: DATABASE_URL
         sync: false
@@ -326,14 +304,10 @@ services:
     healthCheckPath: /healthz
     envVarGroups:
       - zeo-shared
+      - zeo-upstash
     envVars:
       - key: DATABASE_URL
         sync: false
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: zeo-redis
-          property: connectionString
       - key: REPOSITORY
         value: postgres
       - key: PYTHON_ENV
@@ -349,19 +323,57 @@ services:
     healthCheckPath: /healthz
     envVarGroups:
       - zeo-shared
+      - zeo-upstash
     envVars:
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: zeo-redis
-          property: connectionString
       - key: PYTHON_ENV
         value: production
 
-  # ------------------------------------------------------------------ Managed Key Value (Redis)
+  # ------------------------------------------------------------------ Public API and WebSocket gateway
 
-  - type: redis
-    name: zeo-redis
+  - type: web
+    name: zeo-api-gateway
+    runtime: docker
+    dockerfilePath: ./infra/nginx/Dockerfile
+    dockerContext: .
     plan: starter
     region: singapore
-    maxmemoryPolicy: allkeys-lru
+    healthCheckPath: /healthz
+    envVars:
+      - key: AUTH_USER_HOST
+        value: zeo-auth-user
+      - key: KYC_HOST
+        value: zeo-kyc
+      - key: AUCTION_HOST
+        value: zeo-auction-orchestrator
+      - key: BID_HOST
+        value: zeo-bid
+      - key: PRICING_HOST
+        value: zeo-pricing
+      - key: PAYMENT_HOST
+        value: zeo-payment-escrow
+      - key: DISPUTE_HOST
+        value: zeo-dispute
+      - key: SEARCH_HOST
+        value: zeo-search-analytics
+      - key: ADMIN_HOST
+        value: zeo-admin-moderation
+      - key: WS_GATEWAY_HOST
+        value: zeo-ws-gateway
+
+  # ------------------------------------------------------------------ Frontend
+
+  - type: web
+    name: zeo-frontend
+    runtime: static
+    buildCommand: npm ci && npm run build
+    staticPublishPath: frontend/dist
+    rootDir: frontend
+    envVars:
+      - key: VITE_USE_MOCKS
+        value: "false"
+      - key: VITE_API_URL
+        sync: false
+      - key: VITE_WS_URL
+        sync: false
+      - key: VITE_FEATURED_AUCTIONS
+        sync: false

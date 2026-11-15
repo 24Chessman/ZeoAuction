@@ -1,12 +1,10 @@
 """KYC settings, read once at start-up (names match docker-compose.yml)."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
 
-from app.domain.face import FacePolicy
-from app.domain.submission import MAX_FRAME_BYTES
-from zeo_common.settings import env_float, env_int, env_str
+from zeo_common.settings import env_int, env_str
 
 SERVICE_ROOT = Path(__file__).resolve().parent.parent
 # UIDAI's Secure QR signing certificate ("DS Unique Identification Authority of India 06",
@@ -41,13 +39,10 @@ class Settings:
     # How old the QR may be. None (KYC_AADHAAR_MAX_AGE_HOURS=0, the default): no limit, as
     # the QR on a printed letter or PVC card dates from when it was printed.
     aadhaar_max_age: timedelta | None = None
-    face_models_dir: Path = SERVICE_ROOT / "models"
-    face_policy: FacePolicy = field(default_factory=FacePolicy)
-    max_frame_bytes: int = MAX_FRAME_BYTES
+    max_frame_bytes: int = 0  # legacy compatibility; live face capture is removed
 
     @classmethod
     def from_env(cls) -> "Settings":
-        defaults = FacePolicy()
         return cls(
             database_url=env_str(
                 "DATABASE_URL", "postgresql://kyc_svc:kyc_dev_pw@localhost:5432/zeoauction"
@@ -60,15 +55,4 @@ class Settings:
             trusted_certificates=(UIDAI_CERTIFICATE,)
             + _paths(env_str("KYC_EXTRA_TRUSTED_CERTS", "")),
             aadhaar_max_age=_max_age(env_int("KYC_AADHAAR_MAX_AGE_HOURS", 0)),
-            face_models_dir=Path(env_str("KYC_FACE_MODELS_DIR", str(SERVICE_ROOT / "models"))),
-            face_policy=FacePolicy(
-                match_threshold=env_float("KYC_FACE_MATCH_THRESHOLD", defaults.match_threshold),
-                review_threshold=env_float(
-                    "KYC_FACE_REVIEW_THRESHOLD", defaults.review_threshold
-                ),
-                min_yaw_span=env_float("KYC_FACE_MIN_YAW_SPAN", defaults.min_yaw_span),
-                max_attempts=env_int("KYC_FACE_MAX_ATTEMPTS", defaults.max_attempts),
-                cooldown=timedelta(hours=env_int("KYC_FACE_COOLDOWN_HOURS", 24)),
-            ),
-            max_frame_bytes=env_int("KYC_MAX_FRAME_BYTES", MAX_FRAME_BYTES),
         )

@@ -5,7 +5,6 @@ from fastapi.testclient import TestClient
 
 from app.adapters.kyc_repo import InMemoryKycRepository
 from app.domain.aadhaar import load_trusted_key
-from app.domain.face import FaceReading, ReferenceFace
 from app.main import build_app
 from app.settings import Settings
 from scripts.synthetic_qr import Holder, SigningIdentity, make_identity, make_qr_text, qr_png
@@ -28,15 +27,6 @@ IDENTITY: SigningIdentity = make_identity()
 TRUSTED = load_trusted_key(IDENTITY.certificate)
 
 
-def frame(n: int) -> bytes:
-    """A distinct synthetic JPEG frame (distinct bytes, so not a replayed duplicate)."""
-    return JPEG + f"frame-{n}".encode()
-
-
-def frames(count: int = 3) -> list[bytes]:
-    return [frame(n) for n in range(count)]
-
-
 def qr_text(holder: Holder | None = None, *, generated_at: datetime | None = None,
             identity: SigningIdentity = IDENTITY, version: int = 2,
             photo: bytes = JP2) -> str:
@@ -47,37 +37,6 @@ def qr_text(holder: Holder | None = None, *, generated_at: datetime | None = Non
 def qr_image(holder: Holder | None = None, **kwargs) -> bytes:
     """A PNG of a synthetic Secure QR, as the seller would upload it."""
     return qr_png(qr_text(holder, **kwargs))
-
-
-def readings(*scores: float, yaws: tuple[float, ...] = (-0.2, 0.0, 0.2)) -> list[FaceReading]:
-    return [FaceReading(faces=1, score=score, yaw=yaws[i % len(yaws)])
-            for i, score in enumerate(scores)]
-
-
-class FakeFaceEngine:
-    """Scripted engine: the reference photo always has one face unless told otherwise, and
-    ``compare`` returns ``next_readings`` (a clear match by default)."""
-
-    model = "fake-engine"
-
-    def __init__(self) -> None:
-        self.reference_faces = 1
-        self.decodable = True
-        self.next_readings: list[FaceReading] | None = None
-        self.compared: list[tuple[tuple[float, ...] | None, int]] = []
-
-    def reference(self, photo: bytes) -> ReferenceFace:
-        if not self.decodable:
-            return ReferenceFace(jpeg=None, faces=0, embedding=None)
-        embedding = (1.0, 0.0, 0.0) if self.reference_faces == 1 else None
-        return ReferenceFace(jpeg=JPEG + b"aadhaar", faces=self.reference_faces,
-                             embedding=embedding)
-
-    def compare(self, embedding, frames_: list[bytes]) -> list[FaceReading]:
-        self.compared.append((embedding, len(frames_)))
-        if self.next_readings is not None:
-            return self.next_readings
-        return readings(*([0.6] * len(frames_)))
 
 
 def bearer(user_id: UUID, role: str = "USER", kyc_status: str = "NOT_SUBMITTED") -> dict:
@@ -91,10 +50,9 @@ class Harness:
         self.repo = InMemoryKycRepository()
         self.store = InMemoryObjectStore("kyc-documents")
         self.versions = InMemoryTokenVersions()
-        self.engine = FakeFaceEngine()
         self.app = build_app(SETTINGS, repository=self.repo, store=self.store,
                              token_versions=self.versions, jwt_settings=JWT,
-                             face_engine=self.engine, trusted_keys=[TRUSTED])
+                             trusted_keys=[TRUSTED])
         self.client = TestClient(self.app, raise_server_exceptions=False)
         self.admin = uuid4()
 
@@ -110,12 +68,6 @@ class Harness:
         return self.client.post("/api/v1/kyc/aadhaar", data=data, files=files,
                                 headers=bearer(user_id))
 
-    def face(self, user_id: UUID, submission_id: str, images: list[bytes] | None = None):
-        files = [("frames", (f"f{i}.jpg", data, "image/jpeg"))
-                 for i, data in enumerate(images if images is not None else frames())]
-        return self.client.post(f"/api/v1/kyc/submissions/{submission_id}/face", files=files,
-                                headers=bearer(user_id))
-
     def me(self, user_id: UUID):
         return self.client.get("/api/v1/kyc/submissions/me", headers=bearer(user_id))
 
@@ -128,17 +80,12 @@ class Harness:
                                headers=bearer(self.admin, role="ADMIN"))
 
     def submitted(self, user_id: UUID | None = None) -> tuple[UUID, str]:
-        """A seller whose Aadhaar verified and who now waits for the face check."""
+        """A seller whose Aadhaar is verified and awaits administrator review."""
         user_id = user_id or uuid4()
         response = self.upload(user_id)
         assert response.status_code == 201, response.text
         return user_id, response.json()["submission_id"]
 
     def in_review(self, user_id: UUID | None = None) -> tuple[UUID, str]:
-        """A seller whose face check was borderline, so an administrator decides."""
-        user_id, submission_id = self.submitted(user_id)
-        self.engine.next_readings = readings(0.35, 0.36, 0.34)
-        response = self.face(user_id, submission_id)
-        self.engine.next_readings = None
-        assert response.json()["outcome"] == "REVIEW", response.text
-        return user_id, submission_id
+        """A seller whose Aadhaar submission is waiting for an administrator."""
+        return self.submitted(user_id)

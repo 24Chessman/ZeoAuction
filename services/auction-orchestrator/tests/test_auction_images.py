@@ -156,11 +156,11 @@ async def test_postgres_images_round_trip():
     sql, _ = pool.log[-1]
     assert sql.endswith("WHERE auction_id = $1 ORDER BY position")
     await repo.add_image(image)
-    assert pool.log[-1][0].startswith("INSERT INTO auction_images")
+    assert pool.log[-1][0].startswith("INSERT INTO auction.auction_images")
     assert len(pool.log[-1][1]) == 7
     removed = await repo.remove_image(auction.id, image.id)
     assert removed == image
-    assert pool.log[-1][0].startswith("DELETE FROM auction_images")
+    assert pool.log[-1][0].startswith("DELETE FROM auction.auction_images")
     assert await PostgresAuctionRepository(FakePool()).remove_image(auction.id, uuid4()) is None
 
 

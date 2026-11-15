@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: zeo-kyc
+    runtime: docker
+    dockerfilePath: services/kyc/Dockerfile
+    dockerContext: .
+    plan: free
+    region: singapore
+    healthCheckPath: /healthz
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: KYC_REPOSITORY
+        value: postgres
+      - key: KYC_STORAGE
+        value: s3
+      - key: S3_ENDPOINT_URL
+        sync: false
+      - key: S3_ACCESS_KEY
+        sync: false
+      - key: S3_SECRET_KEY
+        sync: false
+      - key: S3_BUCKET_KYC
+        value: kyc-documents
+      - key: JWT_SECRET
+        sync: false
+      - key: CORS_ALLOW_ORIGINS
+        sync: false

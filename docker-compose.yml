@@ -1,7 +1,7 @@
 # ZeoAuction stack configured for production external services (NeonDB, Upstash Redis, Aiven Kafka)
 #
-# Host ports: services 8001-8012 (http://localhost:<port>/healthz), S3 API 8333.
-# Local postgres, redis, kafka are in the "local-infra" profile.
+# Host ports: services 8001-8012 (http://localhost:<port>/healthz).
+# Local postgres, redis and kafka are in the "local-infra" profile.
 
 name: zeoauction
 
@@ -10,24 +10,24 @@ x-service-build: &service-build
 
 x-service-common: &service-common
   restart: unless-stopped
-  depends_on:
-    s3-init:
-      condition: service_completed_successfully
 
 x-service-env: &service-env
   LOG_LEVEL: ${LOG_LEVEL:-INFO}
-  REDIS_URL: ${REDIS_URL:-rediss://default:gQAAAAAAAlgFAAIgcDEwMGU0NmQ5MTJiZDg0MGNhODRkNzViM2U0MjgyZTViZA@fond-eagle-153605.upstash.io:6379}
-  UPSTASH_REDIS_REST_URL: ${UPSTASH_REDIS_REST_URL:-https://fond-eagle-153605.upstash.io}
-  UPSTASH_REDIS_REST_TOKEN: ${UPSTASH_REDIS_REST_TOKEN:-gQAAAAAAAlgFAAIgcDEwMGU0NmQ5MTJiZDg0MGNhODRkNzViM2U0MjgyZTViZA}
-  KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka-veldo-berasagar9800-74f6.g.aivencloud.com:25533}
-  KAFKA_SECURITY_PROTOCOL: ${KAFKA_SECURITY_PROTOCOL:-SASL_SSL}
-  KAFKA_SASL_MECHANISM: ${KAFKA_SASL_MECHANISM:-SCRAM-SHA-256}
-  KAFKA_SASL_USERNAME: ${KAFKA_SASL_USERNAME:-avnadmin}
-  KAFKA_SASL_PASSWORD: ${KAFKA_SASL_PASSWORD:-AVNS_qiQ5Z7tYgpMehWhggET}
-  KAFKA_SSL_CA_FILE: ${KAFKA_SSL_CA_FILE:-}
-  S3_ENDPOINT_URL: http://s3:8333
-  S3_ACCESS_KEY: zeo-dev-access
-  S3_SECRET_KEY: zeo-dev-secret
+  REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+  UPSTASH_REDIS_REST_URL: ${UPSTASH_REDIS_REST_URL:-}
+  UPSTASH_REDIS_REST_TOKEN: ${UPSTASH_REDIS_REST_TOKEN:-}
+  KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+  KAFKA_SECURITY_PROTOCOL: ${KAFKA_SECURITY_PROTOCOL:-PLAINTEXT}
+  KAFKA_SASL_MECHANISM: ${KAFKA_SASL_MECHANISM:-}
+  KAFKA_SASL_USERNAME: ${KAFKA_SASL_USERNAME:-}
+  KAFKA_SASL_PASSWORD: ${KAFKA_SASL_PASSWORD:-}
+  S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:?Set S3_ENDPOINT_URL to the Supabase S3 endpoint}
+  S3_PUBLIC_ENDPOINT_URL: ${S3_PUBLIC_ENDPOINT_URL:-${S3_ENDPOINT_URL}}
+  S3_ACCESS_KEY: ${S3_ACCESS_KEY:?Set S3_ACCESS_KEY to the Supabase S3 access key}
+  S3_SECRET_KEY: ${S3_SECRET_KEY:?Set S3_SECRET_KEY to the Supabase S3 secret}
+  S3_REGION: ${S3_REGION:?Set S3_REGION to the Supabase S3 region}
+  S3_BUCKET_KYC: ${S3_BUCKET_KYC:-kyc-documents}
+  S3_BUCKET_IMAGES: ${S3_BUCKET_IMAGES:-listing-images}
   PAYMENT_ADAPTER: ${PAYMENT_ADAPTER:-razorpay}
   JWT_SECRET: ${JWT_SECRET:-zeo-dev-jwt-secret-not-for-production-use}
   CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-http://localhost:5173}
@@ -107,37 +107,6 @@ services:
     entrypoint: ["sh", "/opt/zeo/create-topics.sh", "kafka:9092"]
     restart: "no"
 
-  # S3-compatible object storage
-  s3:
-    image: chrislusf/seaweedfs:4.48
-    restart: unless-stopped
-    command: server -dir=/data -s3 -s3.config=/etc/seaweedfs/s3-identities.json
-    ports: ["8333:8333"]
-    volumes:
-      - s3data:/data
-      - ./infra/s3/s3-identities.json:/etc/seaweedfs/s3-identities.json:ro
-      - ./infra/s3/security.toml:/etc/seaweedfs/security.toml:ro
-    healthcheck:
-      test: ["CMD-SHELL", "curl -s -o /dev/null http://localhost:8333/"]
-      interval: 5s
-      timeout: 5s
-      retries: 30
-
-  s3-init:
-    image: amazon/aws-cli:2.27.0
-    depends_on:
-      s3:
-        condition: service_healthy
-    environment:
-      AWS_ACCESS_KEY_ID: zeo-dev-access
-      AWS_SECRET_ACCESS_KEY: zeo-dev-secret
-      AWS_DEFAULT_REGION: us-east-1
-      S3_ENDPOINT_URL: http://s3:8333
-    volumes:
-      - ./infra/s3:/opt/zeo:ro
-    entrypoint: ["sh", "/opt/zeo/create-buckets.sh"]
-    restart: "no"
-
   # Distributed tracing with Jaeger (#101)
   jaeger:
     image: jaegertracing/all-in-one:1.50
@@ -175,7 +144,6 @@ services:
       DATABASE_URL: ${NEON_DB_CONNECTION_STRING:-${DATABASE_URL}}&currentSchema=kyc
       DATABASE_SCHEMA: kyc
       S3_BUCKET: kyc-documents
-      S3_PUBLIC_ENDPOINT_URL: http://localhost:8333
       KYC_SIGNED_URL_TTL_SECONDS: "60"
       KYC_EXTRA_TRUSTED_CERTS: ${KYC_EXTRA_TRUSTED_CERTS:-}
       KYC_AADHAAR_MAX_AGE_HOURS: "0"
@@ -323,4 +291,3 @@ services:
 volumes:
   pgdata:
   kafkadata:
-  s3data:

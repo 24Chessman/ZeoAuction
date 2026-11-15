@@ -34,7 +34,7 @@ async def test_load_ladder_maps_rows():
                       "base_increment": Decimal("1.00"), "velocity_multiplier": Decimal("2.000")}])
     (rule,) = await PostgresPricingRepository(pool).load_ladder()
     assert (rule.price_to, rule.base_increment) == (None, Decimal("1.00"))
-    assert "FROM increment_rules ORDER BY price_from" in pool.log[0][0]
+    assert "FROM pricing.increment_rules ORDER BY price_from" in pool.log[0][0]
 
 
 async def test_save_buckets_upserts_keeping_the_larger_count():
@@ -54,7 +54,7 @@ async def test_recent_buckets_and_prune():
     repo = PostgresPricingRepository(pool)
     assert await repo.recent_buckets(T0) == [StoredBucket(str(AUCTION), T0, 5, 4)]
     await repo.prune_buckets(T0)
-    assert pool.log[-1] == ("DELETE FROM velocity_windows WHERE window_start < $1", (T0,))
+    assert pool.log[-1] == ("DELETE FROM pricing.velocity_windows WHERE window_start < $1", (T0,))
 
 
 async def test_flag_and_clear_write_the_flag_row():
@@ -64,8 +64,9 @@ async def test_flag_and_clear_write_the_flag_row():
     await repo.record_flag(Transition(str(AUCTION), Change.CLEARED, 9.0, T0, "slow"))
     flag_sql, flag_args = pool.log[0]
     clear_sql, clear_args = pool.log[1]
-    assert flag_sql.startswith("INSERT INTO hot_auction_flags") and "cleared_at = NULL" in flag_sql
+    assert flag_sql.startswith("INSERT INTO pricing.hot_auction_flags")
+    assert "cleared_at = NULL" in flag_sql
     assert flag_args == (UUID(str(AUCTION)), T0, "fast")
-    assert clear_sql.startswith("UPDATE hot_auction_flags SET cleared_at")
+    assert clear_sql.startswith("UPDATE pricing.hot_auction_flags SET cleared_at")
     assert clear_args == (AUCTION, T0)
     assert await repo.active_flags() == [str(AUCTION)]

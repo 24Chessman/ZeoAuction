@@ -9,11 +9,12 @@ Blocking and CPU-bound, so the service calls it with ``asyncio.to_thread``. Noth
 or keeps the image or the decoded text.
 """
 
+from io import BytesIO
 from typing import Protocol
 
-import cv2
 import numpy as np
 import zxingcpp
+from PIL import Image, UnidentifiedImageError
 
 MAX_SIDE = 4000  # larger photos are scaled down first; a printed QR stays readable at this size
 
@@ -26,13 +27,17 @@ class QrReader(Protocol):
 
 class ZxingQrReader:
     def read(self, image: bytes) -> list[str] | None:
-        gray = cv2.imdecode(np.frombuffer(image, np.uint8), cv2.IMREAD_GRAYSCALE)
-        if gray is None:
+        try:
+            gray_image = Image.open(BytesIO(image)).convert("L")
+        except (OSError, UnidentifiedImageError):
             return None
-        height, width = gray.shape[:2]
-        if max(height, width) > MAX_SIDE:
-            scale = MAX_SIDE / max(height, width)
-            gray = cv2.resize(gray, (round(width * scale), round(height * scale)),
-                              interpolation=cv2.INTER_AREA)
+        width, height = gray_image.size
+        if max(width, height) > MAX_SIDE:
+            scale = MAX_SIDE / max(width, height)
+            gray_image = gray_image.resize(
+                (round(width * scale), round(height * scale)),
+                Image.Resampling.LANCZOS,
+            )
+        gray = np.asarray(gray_image)
         codes = zxingcpp.read_barcodes(gray, formats=zxingcpp.BarcodeFormat.QRCode)
         return [code.text for code in codes if code.valid and code.text]

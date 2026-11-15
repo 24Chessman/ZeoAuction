@@ -16,8 +16,7 @@ from fastapi import APIRouter, Query, Response
 from pydantic import BaseModel, Field
 
 from app.api import AadhaarView, DocumentView, Service, aadhaar_view, document_view
-from app.domain.face import FaceAttempt
-from app.domain.submission import Document
+from app.domain.submission import Document, FaceAttempt
 from app.service import SubmissionState
 from zeo_common.auth import AdminPrincipal
 

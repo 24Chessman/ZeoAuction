@@ -1,0 +1,36 @@
+services:
+  - type: web
+    name: zeo-payment-escrow
+    runtime: docker
+    dockerfilePath: services/payment-escrow/Dockerfile
+    dockerContext: .
+    plan: free
+    region: singapore
+    healthCheckPath: /healthz
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: KAFKA_BOOTSTRAP_SERVERS
+        sync: false
+      - key: KAFKA_SECURITY_PROTOCOL
+        value: SASL_SSL
+      - key: KAFKA_SASL_MECHANISM
+        value: SCRAM-SHA-256
+      - key: KAFKA_SASL_USERNAME
+        sync: false
+      - key: KAFKA_SASL_PASSWORD
+        sync: false
+      - key: PAYMENT_REPOSITORY
+        value: postgres
+      - key: PAYMENT_PUBLISHER
+        value: kafka
+      - key: PAYMENT_ADAPTER
+        value: mock
+      - key: RUN_SETTLEMENT_WORKER
+        value: "true"
+      - key: INTERNAL_SERVICE_TOKEN
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: CORS_ALLOW_ORIGINS
+        sync: false

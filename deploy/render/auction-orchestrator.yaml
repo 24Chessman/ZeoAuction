@@ -1,0 +1,52 @@
+services:
+  - type: web
+    name: zeo-auction-orchestrator
+    runtime: docker
+    dockerfilePath: services/auction-orchestrator/Dockerfile
+    dockerContext: .
+    plan: free
+    region: singapore
+    healthCheckPath: /healthz
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: KAFKA_BOOTSTRAP_SERVERS
+        sync: false
+      - key: KAFKA_SECURITY_PROTOCOL
+        value: SASL_SSL
+      - key: KAFKA_SASL_MECHANISM
+        value: SCRAM-SHA-256
+      - key: KAFKA_SASL_USERNAME
+        sync: false
+      - key: KAFKA_SASL_PASSWORD
+        sync: false
+      - key: AUCTION_PUBLISHER
+        value: kafka
+      - key: CONSUME_BID_EVENTS
+        value: "true"
+      - key: CONSUME_PAYMENT_EVENTS
+        value: "true"
+      - key: RUN_LIFECYCLE_TIMER
+        value: "true"
+      - key: SETTLE_ORDERS
+        value: "true"
+      - key: PAYMENT_SERVICE_URL
+        sync: false
+      - key: INTERNAL_SERVICE_TOKEN
+        sync: false
+      - key: AUCTION_STORAGE
+        value: s3
+      - key: S3_ENDPOINT_URL
+        sync: false
+      - key: S3_ACCESS_KEY
+        sync: false
+      - key: S3_SECRET_KEY
+        sync: false
+      - key: S3_BUCKET_IMAGES
+        value: auction-images
+      - key: JWT_SECRET
+        sync: false
+      - key: CORS_ALLOW_ORIGINS
+        sync: false

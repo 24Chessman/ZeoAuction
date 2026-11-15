@@ -58,6 +58,21 @@ class Document:
 
 
 @dataclass(frozen=True)
+class FaceAttempt:
+    """Legacy persistence shape retained for existing database compatibility."""
+
+    submission_id: UUID
+    attempt_no: int
+    frames: int
+    good_frames: int
+    median_score: float | None
+    min_score: float | None
+    yaw_span: float | None
+    outcome: str
+    at: datetime
+
+
+@dataclass(frozen=True)
 class ValidatedUpload:
     """An image that passed every check; the bytes travel with it to the store only."""
 

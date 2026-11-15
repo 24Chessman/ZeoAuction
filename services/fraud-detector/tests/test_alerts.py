@@ -193,7 +193,8 @@ async def test_postgres_insert_is_idempotent_on_alert_id():
     alert = build_shill_alert(decision(), START)
     assert await PostgresAlertRepository(pool).save_alert(alert) is True
     sql, args = pool.log[0]
-    assert sql.startswith("INSERT INTO fraud_alerts") and "ON CONFLICT (alert_id) DO NOTHING" in sql
+    assert sql.startswith("INSERT INTO fraud.fraud_alerts")
+    assert "ON CONFLICT (alert_id) DO NOTHING" in sql
     assert args[0] == alert["alert_id"] and args[3] == Decimal("1.0000")
     assert json.loads(args[4]) == alert["signals"]
     assert args[5] == START and args[6] == CLOSES
@@ -205,7 +206,7 @@ async def test_evaluation_runs_are_recorded():
     run = EvaluationRun("v1", "shill-v1", Decimal("0.6000"), Decimal("0.9025"),
                         Decimal("0.9325"), 0)
     assert await PostgresAlertRepository(pool).record_evaluation(run) == 7
-    assert pool.log[0][0].startswith("INSERT INTO evaluation_runs")
+    assert pool.log[0][0].startswith("INSERT INTO fraud.evaluation_runs")
     assert pool.log[0][1] == ("v1", "shill-v1", Decimal("0.6000"), Decimal("0.9025"),
                               Decimal("0.9325"), 0)
     memory = InMemoryAlertRepository()

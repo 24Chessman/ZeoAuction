@@ -148,6 +148,8 @@ def check_verified_seller(principal: Principal) -> None:
     """The listing gate's rule (CT-2, AC-06), usable outside a request too."""
     if principal.suspended:
         raise account_suspended()
+    if principal.is_admin:
+        return
     if principal.kyc_status != "VERIFIED":
         raise seller_not_verified(principal.kyc_status)
 

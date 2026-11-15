@@ -12,9 +12,7 @@ For Aiven (and other SASL_SSL brokers):
 For plain local Kafka (default):
     KAFKA_SECURITY_PROTOCOL not set  →  PLAINTEXT
 
-SSL CA verification uses the system trust store by default; if the broker uses a
-private CA, set KAFKA_SSL_CA_FILE to the path of the CA certificate.
-For mutual TLS, set KAFKA_SSL_CERT_FILE and KAFKA_SSL_KEY_FILE.
+SSL CA verification uses Python's system trust store.
 """
 
 import os
@@ -32,10 +30,6 @@ class KafkaSettings:
     sasl_mechanism: str = ""
     sasl_plain_username: str = ""
     sasl_plain_password: str = ""
-    ssl_cafile: str = ""
-    ssl_certfile: str = ""
-    ssl_keyfile: str = ""
-
     @classmethod
     def from_env(cls) -> "KafkaSettings":
         return cls(
@@ -46,28 +40,13 @@ class KafkaSettings:
             sasl_mechanism=os.environ.get("KAFKA_SASL_MECHANISM", ""),
             sasl_plain_username=os.environ.get("KAFKA_SASL_USERNAME", ""),
             sasl_plain_password=os.environ.get("KAFKA_SASL_PASSWORD", ""),
-            ssl_cafile=os.environ.get("KAFKA_SSL_CA_FILE", ""),
-            ssl_certfile=os.environ.get("KAFKA_SSL_CERT_FILE", ""),
-            ssl_keyfile=os.environ.get("KAFKA_SSL_KEY_FILE", ""),
         )
 
     def _ssl_context(self) -> ssl.SSLContext | None:
         """Build an SSL context for SASL_SSL / SSL protocols."""
         if self.security_protocol not in ("SASL_SSL", "SSL"):
             return None
-        ctx = ssl.create_default_context()
-        if self.ssl_cafile and os.path.exists(self.ssl_cafile):
-            ctx.load_verify_locations(cafile=self.ssl_cafile)
-        if (
-            self.ssl_certfile
-            and self.ssl_keyfile
-            and os.path.exists(self.ssl_certfile)
-            and os.path.exists(self.ssl_keyfile)
-        ):
-            ctx.load_cert_chain(
-                certfile=self.ssl_certfile, keyfile=self.ssl_keyfile
-            )
-        return ctx
+        return ssl.create_default_context()
 
     def producer_kwargs(self) -> dict[str, Any]:
         """Extra kwargs to pass to ``AIOKafkaProducer(**producer_kwargs())``."""

@@ -3,7 +3,6 @@ python-multipart>=0.0.9
 # Aadhaar Secure QR: zxing-cpp reads the QR from the photo, cryptography checks UIDAI's RSA
 # signature.
 zxing-cpp>=3.1
-cryptography>=42
-# Live face check: YuNet + SFace through cv2.dnn (models fetched by scripts/fetch_face_models.py).
-opencv-python-headless>=4.10
 numpy>=1.26
+pillow>=10
+cryptography>=42

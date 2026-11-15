@@ -1,0 +1,106 @@
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    '' close;
+}
+
+server {
+    listen 80;
+    server_name _;
+
+    client_max_body_size 10m;
+
+    location = /healthz {
+        access_log off;
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+
+    location = /readyz {
+        access_log off;
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+
+    # This more-specific route must precede the generic auction route.
+    location ~ ^/api/v1/auctions/[^/]+/bids(?:/|$) {
+        proxy_pass ${BID_URL};
+        include /etc/nginx/proxy_params;
+    }
+
+    location /api/v1/auth/ {
+        proxy_pass ${AUTH_USER_URL};
+        include /etc/nginx/proxy_params;
+    }
+
+    location /api/v1/kyc/ {
+        proxy_pass ${KYC_URL};
+        include /etc/nginx/proxy_params;
+    }
+
+    location /api/v1/admin/kyc/ {
+        proxy_pass ${KYC_URL};
+        include /etc/nginx/proxy_params;
+    }
+
+    location /api/v1/auctions/ {
+        proxy_pass ${AUCTION_URL};
+        include /etc/nginx/proxy_params;
+    }
+
+    location /api/v1/pricing/ {
+        proxy_pass ${PRICING_URL};
+        include /etc/nginx/proxy_params;
+    }
+
+    location /api/v1/fees/ {
+        proxy_pass ${PAYMENT_URL};
+        include /etc/nginx/proxy_params;
+    }
+
+    location /api/v1/orders/ {
+        proxy_pass ${PAYMENT_URL};
+        include /etc/nginx/proxy_params;
+    }
+
+    location /api/v1/webhooks/ {
+        proxy_pass ${PAYMENT_URL};
+        include /etc/nginx/proxy_params;
+    }
+
+    location /api/v1/disputes/ {
+        proxy_pass ${DISPUTE_URL};
+        include /etc/nginx/proxy_params;
+    }
+
+    location /api/v1/search/ {
+        proxy_pass ${SEARCH_URL};
+        include /etc/nginx/proxy_params;
+    }
+
+    location /api/v1/admin/ {
+        proxy_pass ${ADMIN_URL};
+        include /etc/nginx/proxy_params;
+    }
+
+    location /api/v1/bids/ {
+        proxy_pass ${BID_URL};
+        include /etc/nginx/proxy_params;
+    }
+
+    location /ws {
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_pass ${WS_GATEWAY_URL};
+    }
+
+    location / {
+        default_type application/json;
+        return 404 '{"code":"NOT_FOUND","message":"Gateway route not found"}';
+    }
+}

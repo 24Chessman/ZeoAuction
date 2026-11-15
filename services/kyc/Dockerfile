@@ -16,11 +16,6 @@ RUN pip install /tmp/zeo-common && rm -rf /tmp/zeo-common
 COPY services/kyc/requirements.txt ./requirements.txt
 RUN pip install -r requirements.txt
 
-# Face models (YuNet + SFace, ~39 MB) are downloaded and checksummed at build time, not committed.
-COPY services/kyc/scripts/fetch_face_models.py /tmp/fetch_face_models.py
-RUN python /tmp/fetch_face_models.py /srv/models && rm /tmp/fetch_face_models.py
-ENV KYC_FACE_MODELS_DIR=/srv/models
-
 COPY services/kyc/app ./app
 
 USER app

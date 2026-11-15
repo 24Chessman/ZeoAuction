@@ -14,14 +14,12 @@ def test_admin_routes_need_the_admin_role(harness):
     assert response.json()["code"] == "FORBIDDEN"
 
 
-def test_the_queue_holds_what_the_face_check_referred_oldest_first(harness):
+def test_the_queue_holds_aadhaar_submissions_oldest_first(harness):
     reviewing = [harness.in_review()[1] for _ in range(2)]
     waiting = harness.submitted()[1]
     page = harness.admin_get("queue").json()
-    assert [item["submission_id"] for item in page["items"]] == reviewing
+    assert [item["submission_id"] for item in page["items"]] == reviewing + [waiting]
     assert all(item["state"] == "UNDER_REVIEW" for item in page["items"])
-    in_progress = harness.admin_get("queue", state="SUBMITTED").json()
-    assert [item["submission_id"] for item in in_progress["items"]] == [waiting]
     second = harness.admin_get("queue", limit=1, offset=1).json()
     assert [item["submission_id"] for item in second["items"]] == [reviewing[1]]
 
@@ -33,20 +31,11 @@ def test_approving_a_referral_mirrors_verified_and_audits(harness):
     body = approved.json()
     assert body["state"] == "VERIFIED"
     assert body["decided_by"] == str(harness.admin)
-    assert harness.repo.mirror.users[user] == ("VERIFIED", 4)
-    assert harness.versions.versions[user] == 4  # the seller's old token is now stale
+    assert harness.repo.mirror.users[user] == ("VERIFIED", 3)
+    assert harness.versions.versions[user] == 3  # the seller's old token is now stale
     assert [row[3] for row in harness.repo.audit_log] == ["KYC_APPROVE"]
-    assert [t.event for t in harness.repo.transitions] == ["submit", "faceReview", "approve"]
+    assert [t.event for t in harness.repo.transitions] == ["submit", "approve"]
     assert harness.repo.transitions[-1].actor_id == harness.admin
-
-
-def test_a_submission_waiting_for_the_face_cannot_be_approved(harness):
-    user, submission_id = harness.submitted()
-    response = harness.admin_post(f"{submission_id}/approve")
-    assert response.status_code == 409
-    assert response.json()["details"] == {"state": "SUBMITTED", "event": "approve"}
-    assert harness.repo.mirror.users[user] == ("SUBMITTED", 2)
-    assert harness.repo.audit_log == []
 
 
 def test_the_start_review_route_is_gone(harness):
@@ -58,7 +47,7 @@ def test_reject_requires_a_reason(harness):
     _, submission_id = harness.in_review()
     assert harness.admin_post(f"{submission_id}/reject", {"reason": "bad"}).status_code == 422
     assert harness.admin_post(f"{submission_id}/reject", {}).status_code == 422
-    reason = "The live capture shows a different person."
+    reason = "The Aadhaar QR could not be accepted."
     response = harness.admin_post(f"{submission_id}/reject", {"reason": reason})
     assert response.status_code == 200
     assert response.json()["rejection_reason"] == reason
@@ -74,7 +63,6 @@ def test_an_admin_rejection_allows_a_new_upload_at_once(harness):
 
 def test_suspend_and_reinstate(harness):
     user, submission_id = harness.submitted()
-    harness.face(user, submission_id)  # a clear match still goes to the queue
     assert harness.repo.mirror.users[user][0] == "UNDER_REVIEW"
     assert harness.admin_post(f"{submission_id}/approve").json()["state"] == "VERIFIED"
     assert harness.admin_post(f"{submission_id}/suspend",
@@ -107,14 +95,12 @@ def test_detail_shows_the_aadhaar_summary_and_every_attempt(harness):
     body = harness.admin_get(submission_id).json()
     assert body["aadhaar"]["holder_name"] == "Asha Verma"
     assert body["aadhaar"]["pincode"] == "411001"
-    assert body["aadhaar"]["face_model"] == "fake-engine"
-    assert body["aadhaar"]["reference_faces"] == 1
+    assert body["aadhaar"]["face_model"] == "disabled"
+    assert body["aadhaar"]["reference_faces"] == 0
     assert len(body["aadhaar"]["signer_sha256"]) == 64
     assert "reference_embedding" not in body["aadhaar"]
-    (attempt,) = body["face_attempts"]
-    assert attempt["outcome"] == "REVIEW"
-    assert attempt["median_score"] == pytest.approx(0.35)
-    assert {d["doc_type"] for d in body["documents"]} == {"AADHAAR_PHOTO", "FACE_CAPTURE"}
+    assert body["face_attempts"] == []
+    assert {d["doc_type"] for d in body["documents"]} == {"AADHAAR_PHOTO"}
     assert all(len(doc["sha256"]) == 64 for doc in body["documents"])
     assert "url" not in body["documents"][0]
 

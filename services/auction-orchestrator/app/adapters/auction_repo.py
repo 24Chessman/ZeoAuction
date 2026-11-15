@@ -28,13 +28,15 @@ _COLUMNS = (
     "settlement_order_id"
 )
 _INSERT_TRANSITION = (
-    "INSERT INTO auction_state_transitions (auction_id, event, from_state, to_state, actor_id, at) "
+    "INSERT INTO auction.auction_state_transitions "
+    "(auction_id, event, from_state, to_state, actor_id, at) "
     "VALUES ($1, $2, $3, $4, $5, $6)"
 )
 _IMAGE_COLUMNS = "id, auction_id, object_key, position, mime_type, size_bytes, uploaded_at"
 # Every column a transition or a bid record may change; the rest are fixed at creation.
 _UPDATE = (
-    "UPDATE auctions SET state = $1, opens_at = $2, closes_at = $3, original_closes_at = $4, "
+    "UPDATE auction.auctions SET state = $1, opens_at = $2, closes_at = $3, "
+    "original_closes_at = $4, "
     "extension_count = $5, winning_bid_id = $6, last_bid_seq = $7, leading_bid_id = $8, "
     "closing_since = $9, leading_bidder_id = $10, leading_amount = $11, "
     "settlement_order_id = $12, version = $13 WHERE id = $14 AND version = $15"
@@ -177,7 +179,7 @@ class PostgresAuctionRepository:
     async def add(self, auction: Auction) -> None:
         async with self.pool.acquire() as connection, connection.transaction():
             await connection.execute(
-                f"INSERT INTO auctions ({_COLUMNS}) VALUES "  # noqa: S608 - constant column list
+                f"INSERT INTO auction.auctions ({_COLUMNS}) VALUES "  # noqa: S608 - constant column list
                 "($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, "
                 "$18, $19, $20, $21, $22, $23, $24, $25, $26)",
                 auction.id, auction.seller_id, auction.title, auction.description,
@@ -198,7 +200,7 @@ class PostgresAuctionRepository:
     async def get(self, auction_id: UUID) -> Auction | None:
         async with self.pool.acquire() as connection:
             row = await connection.fetchrow(
-                f"SELECT {_COLUMNS} FROM auctions WHERE id = $1",  # noqa: S608 - constant columns
+                f"SELECT {_COLUMNS} FROM auction.auctions WHERE id = $1",  # noqa: S608 - constant columns
                 auction_id,
             )
         return None if row is None else _row_to_auction(row)
@@ -228,7 +230,7 @@ class PostgresAuctionRepository:
                   limit: int) -> list[tuple[Auction, str]]:
         async with self.pool.acquire() as connection:
             rows = await connection.fetch(
-                f"SELECT {_COLUMNS} FROM auctions WHERE "  # noqa: S608 - constant columns
+                f"SELECT {_COLUMNS} FROM auction.auctions WHERE "  # noqa: S608 - constant columns
                 "(state = 'SCHEDULED' AND opens_at <= $1) "
                 "OR (state IN ('OPEN', 'EXTENDED') AND closes_at <= $1) "
                 "OR (state = 'CLOSING' AND (closing_since IS NULL OR closing_since <= $2)) "
@@ -246,7 +248,7 @@ class PostgresAuctionRepository:
     async def awaiting_settlement(self, limit: int) -> list[Auction]:
         async with self.pool.acquire() as connection:
             rows = await connection.fetch(
-                f"SELECT {_COLUMNS} FROM auctions WHERE "  # noqa: S608 - constant columns
+                f"SELECT {_COLUMNS} FROM auction.auctions WHERE "  # noqa: S608 - constant columns
                 "state = 'CLOSED' AND winning_bid_id IS NOT NULL AND settlement_order_id IS NULL "
                 "ORDER BY updated_at LIMIT $1",
                 limit,
@@ -256,7 +258,7 @@ class PostgresAuctionRepository:
     async def images(self, auction_id: UUID) -> list[ListingImage]:
         async with self.pool.acquire() as connection:
             rows = await connection.fetch(
-                f"SELECT {_IMAGE_COLUMNS} FROM auction_images "  # noqa: S608 - constant columns
+                f"SELECT {_IMAGE_COLUMNS} FROM auction.auction_images "  # noqa: S608 - constant columns
                 "WHERE auction_id = $1 ORDER BY position",
                 auction_id,
             )
@@ -266,7 +268,7 @@ class PostgresAuctionRepository:
         async with self.pool.acquire() as connection:
             try:
                 await connection.execute(
-                    f"INSERT INTO auction_images ({_IMAGE_COLUMNS}) "  # noqa: S608 - constant
+                    f"INSERT INTO auction.auction_images ({_IMAGE_COLUMNS}) "  # noqa: S608 - constant
                     "VALUES ($1, $2, $3, $4, $5, $6, $7)",
                     image.id, image.auction_id, image.object_key, image.position,
                     image.mime_type, image.size_bytes, image.uploaded_at,
@@ -277,7 +279,7 @@ class PostgresAuctionRepository:
     async def remove_image(self, auction_id: UUID, image_id: UUID) -> ListingImage | None:
         async with self.pool.acquire() as connection:
             row = await connection.fetchrow(
-                f"DELETE FROM auction_images WHERE id = $1 AND auction_id = $2 "  # noqa: S608
+                f"DELETE FROM auction.auction_images WHERE id = $1 AND auction_id = $2 "  # noqa: S608
                 f"RETURNING {_IMAGE_COLUMNS}",
                 image_id, auction_id,
             )

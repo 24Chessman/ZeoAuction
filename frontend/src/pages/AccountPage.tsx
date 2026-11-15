@@ -134,27 +134,29 @@ export function AccountPage() {
             </CardBody>
           </Card>
 
-          <Card>
-            <CardHeader title="Selling on ZeoAuction" description="Bidding needs no verification. Listing an item does." />
-            <CardBody>
-              <div className="flex flex-col gap-4 rounded-2xl border border-line p-4 sm:flex-row sm:items-center">
-                <span className={`grid size-11 shrink-0 place-items-center rounded-xl ${user.kyc_status === "VERIFIED" ? "bg-positive-soft text-positive" : "bg-surface-2 text-ink-muted"}`}>
-                  {user.kyc_status === "VERIFIED" ? <BadgeCheck className="size-5" /> : <ShieldCheck className="size-5" />}
-                </span>
-                <div className="flex-1">
-                  <p className="font-semibold">
-                    {user.kyc_status === "VERIFIED" ? "You're a verified seller" : user.kyc_status === "NOT_SUBMITTED" ? "Not verified yet" : "Verification in progress"}
-                  </p>
-                  <p className="text-sm text-ink-muted">
-                    {user.kyc_status === "VERIFIED" ? "You can create and publish auctions." : "Verify with your Aadhaar QR code to start selling."}
-                  </p>
+          {user.role !== "ADMIN" && (
+            <Card>
+              <CardHeader title="Selling on ZeoAuction" description="Bidding needs no verification. Listing an item does." />
+              <CardBody>
+                <div className="flex flex-col gap-4 rounded-2xl border border-line p-4 sm:flex-row sm:items-center">
+                  <span className={`grid size-11 shrink-0 place-items-center rounded-xl ${user.kyc_status === "VERIFIED" ? "bg-positive-soft text-positive" : "bg-surface-2 text-ink-muted"}`}>
+                    {user.kyc_status === "VERIFIED" ? <BadgeCheck className="size-5" /> : <ShieldCheck className="size-5" />}
+                  </span>
+                  <div className="flex-1">
+                    <p className="font-semibold">
+                      {user.kyc_status === "VERIFIED" ? "You're a verified seller" : user.kyc_status === "NOT_SUBMITTED" ? "Not verified yet" : "Verification in progress"}
+                    </p>
+                    <p className="text-sm text-ink-muted">
+                      {user.kyc_status === "VERIFIED" ? "You can create and publish auctions." : "Verify with your Aadhaar QR code to start selling."}
+                    </p>
+                  </div>
+                  <ButtonLink to={user.kyc_status === "VERIFIED" ? "/sell" : "/sell/verify"} variant="secondary" iconRight={<ArrowRight className="size-4" />}>
+                    {user.kyc_status === "VERIFIED" ? "Seller hub" : "View status"}
+                  </ButtonLink>
                 </div>
-                <ButtonLink to={user.kyc_status === "VERIFIED" ? "/sell" : "/sell/verify"} variant="secondary" iconRight={<ArrowRight className="size-4" />}>
-                  {user.kyc_status === "VERIFIED" ? "Seller hub" : "View status"}
-                </ButtonLink>
-              </div>
-            </CardBody>
-          </Card>
+              </CardBody>
+            </Card>
+          )}
         </div>
       </div>
 

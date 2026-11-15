@@ -43,19 +43,19 @@ _LEDGER_COLUMNS = (
     "provider_ref, note, created_at"
 )
 _UPDATE_ORDER = (
-    "UPDATE orders SET state = $1, provider_order_id = $2, provider_payment_id = $3, "
+    "UPDATE payment.orders SET state = $1, provider_order_id = $2, provider_payment_id = $3, "
     "capture_ref = $4, authorized_at = $5, capture_attempts = $6, next_capture_at = $7, "
     "shipped_at = $8, protection_window_ends_at = $9, version = $10, updated_at = $11 "
     "WHERE id = $12 AND version = $13"
 )
 _INSERT_LEDGER = (
-    "INSERT INTO escrow_ledger (order_id, entry_type, amount, currency, idempotency_key, "
+    "INSERT INTO payment.escrow_ledger (order_id, entry_type, amount, currency, idempotency_key, "
     "saga_id, compensates_id, provider_ref, note) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)"
 )
 
 
 _UPSERT_STEP = (
-    "INSERT INTO saga_steps (saga_id, step, order_id, status, idempotency_key, attempts, "
+    "INSERT INTO payment.saga_steps (saga_id, step, order_id, status, idempotency_key, attempts, "
     "last_error, updated_at) VALUES ($1, $2, $3, $4, $5, 1, $6, $7) "
     "ON CONFLICT (saga_id, step) DO UPDATE SET status = EXCLUDED.status, "
     "attempts = saga_steps.attempts + 1, last_error = EXCLUDED.last_error, "
@@ -252,7 +252,7 @@ class PostgresPaymentRepository:
         async with self.pool.acquire() as connection:
             row = await connection.fetchrow(
                 "SELECT fee_version, convenience_fee, currency, protection_window_days "
-                "FROM fee_config WHERE active"
+                "FROM payment.fee_config WHERE active"
             )
         if row is None:
             raise RuntimeError("payment.fee_config has no active row")
@@ -263,7 +263,7 @@ class PostgresPaymentRepository:
     async def _one(self, where: str, *args: Any) -> Order | None:
         async with self.pool.acquire() as connection:
             row = await connection.fetchrow(
-                f"SELECT {_ORDER_COLUMNS} FROM orders WHERE {where}", *args  # noqa: S608
+                f"SELECT {_ORDER_COLUMNS} FROM payment.orders WHERE {where}", *args  # noqa: S608
             )
         return None if row is None else _order(row)
 
@@ -271,7 +271,7 @@ class PostgresPaymentRepository:
                            steps: Sequence[SagaStepRecord] = ()) -> tuple[Order, bool]:
         async with self.pool.acquire() as connection, connection.transaction():
             inserted = await connection.fetchval(
-                "INSERT INTO orders (id, auction_id, buyer_id, seller_id, winning_bid_id, "
+                "INSERT INTO payment.orders (id, auction_id, buyer_id, seller_id, winning_bid_id, "
                 "winning_bid_amount, convenience_fee, captured_total, currency, fee_version, "
                 "state, saga_id, provider, created_at, updated_at, version, payment_due_at) "
                 "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, "
@@ -284,7 +284,7 @@ class PostgresPaymentRepository:
             )
             if inserted is not None:
                 await connection.execute(
-                    f"INSERT INTO invoices ({_INVOICE_COLUMNS}) VALUES "  # noqa: S608
+                    f"INSERT INTO payment.invoices ({_INVOICE_COLUMNS}) VALUES "  # noqa: S608
                     "($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
                     invoice.id, invoice.order_id, invoice.invoice_number, invoice.bid_amount,
                     invoice.convenience_fee, invoice.total, invoice.currency,
@@ -309,7 +309,7 @@ class PostgresPaymentRepository:
     async def invoice(self, order_id: UUID) -> Invoice | None:
         async with self.pool.acquire() as connection:
             row = await connection.fetchrow(
-                f"SELECT {_INVOICE_COLUMNS} FROM invoices WHERE order_id = $1",  # noqa: S608
+                f"SELECT {_INVOICE_COLUMNS} FROM payment.invoices WHERE order_id = $1",  # noqa: S608
                 order_id,
             )
         return None if row is None else _invoice(row)
@@ -321,7 +321,7 @@ class PostgresPaymentRepository:
         async with self.pool.acquire() as connection, connection.transaction():
             if entries:
                 existing = [_entry(row) for row in await connection.fetch(
-                    f"SELECT {_LEDGER_COLUMNS} FROM escrow_ledger "  # noqa: S608
+                    f"SELECT {_LEDGER_COLUMNS} FROM payment.escrow_ledger "  # noqa: S608
                     "WHERE order_id = $1 ORDER BY id", after.id)]
                 check_append(after, existing, list(entries))
             status = await connection.execute(
@@ -340,7 +340,8 @@ class PostgresPaymentRepository:
                 )
             if void_invoice_at is not None:
                 await connection.execute(
-                    "UPDATE invoices SET voided_at = $1 WHERE order_id = $2 AND voided_at IS NULL",
+                    "UPDATE payment.invoices SET voided_at = $1 "
+                    "WHERE order_id = $2 AND voided_at IS NULL",
                     void_invoice_at, after.id,
                 )
             await _upsert_steps(connection, steps, after.updated_at)
@@ -348,14 +349,14 @@ class PostgresPaymentRepository:
     async def saga_steps(self, saga_id: UUID) -> list[SagaStepRecord]:
         async with self.pool.acquire() as connection:
             rows = await connection.fetch(
-                f"SELECT {_STEP_COLUMNS} FROM saga_steps "  # noqa: S608
+                f"SELECT {_STEP_COLUMNS} FROM payment.saga_steps "  # noqa: S608
                 "WHERE saga_id = $1 ORDER BY step", saga_id)
         return [_step(row) for row in rows]
 
     async def ledger(self, order_id: UUID) -> list[LedgerEntry]:
         async with self.pool.acquire() as connection:
             rows = await connection.fetch(
-                f"SELECT {_LEDGER_COLUMNS} FROM escrow_ledger "  # noqa: S608
+                f"SELECT {_LEDGER_COLUMNS} FROM payment.escrow_ledger "  # noqa: S608
                 "WHERE order_id = $1 ORDER BY id", order_id,
             )
         return [_entry(row) for row in rows]
@@ -363,7 +364,8 @@ class PostgresPaymentRepository:
     async def record_provider_event(self, event: ProviderEvent) -> bool:
         async with self.pool.acquire() as connection:
             row = await connection.fetchrow(
-                "INSERT INTO provider_events (provider, event_id, event_type) VALUES ($1, $2, $3) "
+                "INSERT INTO payment.provider_events (provider, event_id, event_type) "
+                "VALUES ($1, $2, $3) "
                 "ON CONFLICT (provider, event_id) DO UPDATE SET event_type = EXCLUDED.event_type "
                 "RETURNING processed_at",
                 event.provider, event.event_id, event.event_type,
@@ -373,7 +375,7 @@ class PostgresPaymentRepository:
     async def mark_event_processed(self, event: ProviderEvent, now: datetime) -> None:
         async with self.pool.acquire() as connection:
             await connection.execute(
-                "UPDATE provider_events SET processed_at = $1 "
+                "UPDATE payment.provider_events SET processed_at = $1 "
                 "WHERE provider = $2 AND event_id = $3",
                 now, event.provider, event.event_id,
             )
@@ -386,7 +388,7 @@ class PostgresPaymentRepository:
     async def _scan(self, where: str, *args: Any) -> list[Order]:
         async with self.pool.acquire() as connection:
             rows = await connection.fetch(
-                f"SELECT {_ORDER_COLUMNS} FROM orders WHERE {where}", *args  # noqa: S608
+                f"SELECT {_ORDER_COLUMNS} FROM payment.orders WHERE {where}", *args  # noqa: S608
             )
         return [_order(row) for row in rows]
 

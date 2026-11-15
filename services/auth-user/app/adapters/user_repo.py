@@ -115,7 +115,7 @@ class PostgresUserRepository:
         try:
             async with self.pool.acquire() as connection:
                 await connection.execute(
-                    "INSERT INTO users (id, email, password_hash, display_name, "
+                    "INSERT INTO auth.users (id, email, password_hash, display_name, "
                     "favorite_categories, onboarded, email_verified) "
                     "VALUES ($1, $2, $3, $4, $5, $6, $7)",
                     user.id,
@@ -132,7 +132,7 @@ class PostgresUserRepository:
     async def _one(self, where: str, value: Any) -> User | None:
         async with self.pool.acquire() as connection:
             row = await connection.fetchrow(
-                f"SELECT {_USER_COLUMNS} FROM users WHERE {where} = $1",  # noqa: S608 - constant
+                f"SELECT {_USER_COLUMNS} FROM auth.users WHERE {where} = $1",  # noqa: S608 - constant
                 value,
             )
         return None if row is None else _row_to_user(dict(row))
@@ -146,7 +146,7 @@ class PostgresUserRepository:
     async def update_display_name(self, user_id: UUID, display_name: str) -> User | None:
         async with self.pool.acquire() as connection:
             row = await connection.fetchrow(
-                f"UPDATE users SET display_name = $1 WHERE id = $2 "  # noqa: S608 - constant
+                f"UPDATE auth.users SET display_name = $1 WHERE id = $2 "  # noqa: S608 - constant
                 f"RETURNING {_USER_COLUMNS}",
                 display_name,
                 user_id,
@@ -158,7 +158,7 @@ class PostgresUserRepository:
     ) -> User | None:
         async with self.pool.acquire() as connection:
             row = await connection.fetchrow(
-                f"UPDATE users SET favorite_categories = $1, onboarded = $2 WHERE id = $3 "  # noqa: S608
+                f"UPDATE auth.users SET favorite_categories = $1, onboarded = $2 WHERE id = $3 "  # noqa: S608
                 f"RETURNING {_USER_COLUMNS}",
                 favorite_categories,
                 onboarded,
@@ -169,7 +169,7 @@ class PostgresUserRepository:
     async def mark_email_verified(self, user_id: UUID) -> User | None:
         async with self.pool.acquire() as connection:
             row = await connection.fetchrow(
-                f"UPDATE users SET email_verified = true WHERE id = $1 "  # noqa: S608
+                f"UPDATE auth.users SET email_verified = true WHERE id = $1 "  # noqa: S608
                 f"RETURNING {_USER_COLUMNS}",
                 user_id,
             )
@@ -178,7 +178,7 @@ class PostgresUserRepository:
     async def set_password_hash(self, user_id: UUID, password_hash: str) -> None:
         async with self.pool.acquire() as connection:
             await connection.execute(
-                "UPDATE users SET password_hash = $1 WHERE id = $2", password_hash, user_id
+                "UPDATE auth.users SET password_hash = $1 WHERE id = $2", password_hash, user_id
             )
 
 
@@ -189,7 +189,7 @@ class PostgresRefreshTokenStore:
     async def add(self, record: RefreshRecord) -> None:
         async with self.pool.acquire() as connection:
             await connection.execute(
-                "INSERT INTO refresh_tokens (id, user_id, family_id, token_hash, issued_at, "
+                "INSERT INTO auth.refresh_tokens (id, user_id, family_id, token_hash, issued_at, "
                 "expires_at) VALUES ($1, $2, $3, $4, $5, $6)",
                 record.id,
                 record.user_id,
@@ -202,7 +202,7 @@ class PostgresRefreshTokenStore:
     async def get_by_hash(self, token_hash: str) -> RefreshRecord | None:
         async with self.pool.acquire() as connection:
             row = await connection.fetchrow(
-                f"SELECT {_REFRESH_COLUMNS} FROM refresh_tokens "  # noqa: S608 - constant
+                f"SELECT {_REFRESH_COLUMNS} FROM auth.refresh_tokens "  # noqa: S608 - constant
                 "WHERE token_hash = $1",
                 token_hash,
             )
@@ -212,7 +212,7 @@ class PostgresRefreshTokenStore:
         try:
             async with self.pool.acquire() as connection, connection.transaction():
                 await connection.execute(
-                    "INSERT INTO refresh_tokens (id, user_id, family_id, token_hash, issued_at, "
+                    "INSERT INTO auth.refresh_tokens (id, user_id, family_id, token_hash, issued_at, "
                     "expires_at) VALUES ($1, $2, $3, $4, $5, $6)",
                     new.id,
                     new.user_id,
@@ -222,7 +222,7 @@ class PostgresRefreshTokenStore:
                     new.expires_at,
                 )
                 status = await connection.execute(
-                    "UPDATE refresh_tokens SET rotated_at = $1, replaced_by = $2 "
+                    "UPDATE auth.refresh_tokens SET rotated_at = $1, replaced_by = $2 "
                     "WHERE id = $3 AND rotated_at IS NULL AND revoked_at IS NULL",
                     at,
                     new.id,
@@ -237,7 +237,7 @@ class PostgresRefreshTokenStore:
     async def revoke_family(self, family_id: UUID, at: datetime) -> None:
         async with self.pool.acquire() as connection:
             await connection.execute(
-                "UPDATE refresh_tokens SET revoked_at = $1 "
+                "UPDATE auth.refresh_tokens SET revoked_at = $1 "
                 "WHERE family_id = $2 AND revoked_at IS NULL",
                 at,
                 family_id,

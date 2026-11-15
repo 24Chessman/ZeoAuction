@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: zeo-api-gateway
+    runtime: docker
+    dockerfilePath: infra/nginx/Dockerfile
+    dockerContext: .
+    plan: free
+    region: singapore
+    healthCheckPath: /healthz
+    envVars:
+      - key: AUTH_USER_URL
+        sync: false
+      - key: KYC_URL
+        sync: false
+      - key: AUCTION_URL
+        sync: false
+      - key: BID_URL
+        sync: false
+      - key: PRICING_URL
+        sync: false
+      - key: PAYMENT_URL
+        sync: false
+      - key: DISPUTE_URL
+        sync: false
+      - key: SEARCH_URL
+        sync: false
+      - key: ADMIN_URL
+        sync: false
+      - key: WS_GATEWAY_URL
+        sync: false
