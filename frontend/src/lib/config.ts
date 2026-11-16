@@ -1,7 +1,35 @@
 const env = import.meta.env;
 
-/** Mock mode is the default so every screen works without the Docker stack. */
-export const useMocks = (env.ZEO_USE_MOCKS ?? env.VITE_USE_MOCKS ?? "true") !== "false";
+const STORAGE_KEY = "zeo_use_mocks";
+
+function resolveUseMocks(): boolean {
+  if (typeof window !== "undefined") {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored === "true") return true;
+      if (stored === "false") return false;
+    } catch {
+      // storage unavailable or restricted
+    }
+  }
+  return (env.ZEO_USE_MOCKS ?? env.VITE_USE_MOCKS ?? "true") !== "false";
+}
+
+/** Mock mode: defaults to env, but can be switched at runtime via localStorage. */
+export const useMocks = resolveUseMocks();
+
+export function toggleAppMode(nextMode?: boolean): void {
+  if (typeof window === "undefined") return;
+  const current = resolveUseMocks();
+  const next = nextMode !== undefined ? nextMode : !current;
+  try {
+    localStorage.setItem(STORAGE_KEY, String(next));
+  } catch {
+    // ignore storage errors
+  }
+  window.location.assign("/");
+}
+
 const rawApiUrl =
   env.ZEO_API_GATEWAY_URL ??
   env.ZEO_GATEWAY_URL ??

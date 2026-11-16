@@ -4,6 +4,7 @@ import { ArrowRight, Check, CheckCircle2, Eye, EyeOff, Lock, Mail, UserRound } f
 import { useAuth } from "@/app/auth";
 import { Banner, Button, Field, Input } from "@/components/ui";
 import { cn } from "@/lib/cn";
+import { useMocks } from "@/lib/config";
 import { describeError, errorField } from "@/lib/errors";
 import { AuthLayout } from "./AuthLayout";
 
@@ -92,18 +93,20 @@ export function RegisterPage() {
         </div>
       ) : (
         <>
-          <div className="mb-5 rounded-2xl border border-brand/20 bg-brand-soft/50 p-3.5 text-xs text-brand-ink flex items-center justify-between gap-3">
-            <div>
-              <p className="font-semibold">Fast Gmail Sign-In Available</p>
-              <p className="text-ink-muted">Sign up and log in passwordless with a 6-digit Gmail code.</p>
+          {!useMocks && (
+            <div className="mb-5 rounded-2xl border border-brand/20 bg-brand-soft/50 p-3.5 text-xs text-brand-ink flex items-center justify-between gap-3">
+              <div>
+                <p className="font-semibold">Fast Gmail Sign-In Available</p>
+                <p className="text-ink-muted">Sign up and log in passwordless with a 6-digit Gmail code.</p>
+              </div>
+              <Link
+                to="/login"
+                className="shrink-0 inline-flex items-center gap-1 rounded-xl bg-midnight px-3 py-1.5 text-xs font-semibold text-brand hover:opacity-90"
+              >
+                Use Gmail <ArrowRight className="size-3" />
+              </Link>
             </div>
-            <Link
-              to="/login"
-              className="shrink-0 inline-flex items-center gap-1 rounded-xl bg-midnight px-3 py-1.5 text-xs font-semibold text-brand hover:opacity-90"
-            >
-              Use Gmail <ArrowRight className="size-3" />
-            </Link>
-          </div>
+          )}
 
           <form onSubmit={submit} className="space-y-5" noValidate>
             {serverCopy && !serverField && (
