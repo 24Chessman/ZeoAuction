@@ -25,6 +25,17 @@ server {
     access_log /dev/stdout upstream_fmt;
     error_log /dev/stderr info;
 
+    # Intercept upstream 502, 503, 504 errors and return clean JSON with CORS
+    error_page 502 503 504 = @service_unavailable;
+
+    location @service_unavailable {
+        default_type application/json;
+        add_header 'Access-Control-Allow-Origin' $cors_origin always;
+        add_header 'Access-Control-Allow-Credentials' 'true' always;
+        add_header 'Access-Control-Expose-Headers' 'X-Request-ID, Idempotent-Replay' always;
+        return 503 '{"code":"SERVICE_UNAVAILABLE","message":"Backend service is temporarily unavailable or warming up. Please retry in a few seconds.","details":null}\n';
+    }
+
     location = /healthz {
         access_log off;
         default_type text/plain;

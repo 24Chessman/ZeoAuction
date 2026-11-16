@@ -6,96 +6,73 @@
 
 ---
 
-This document provides a comprehensive breakdown of the **ZeoAuction** platform, covering the complete functional feature set, the end-to-end integration between Frontend, Backend, and Database tiers, and synchronous vs. asynchronous API integration architectures.
+This document provides a concise architectural guide for the **ZeoAuction** platform, covering the platform features, full-stack tiers, and synchronous vs. asynchronous API integrations.
 
 ---
 
 ## 1. Complete Feature Set (Fully Functional App)
 
-ZeoAuction is designed with a **Trust and Safety First** philosophy, serving three primary user roles: **Buyers/Bidders**, **Sellers**, and **Administrators**.
+ZeoAuction serves three primary user roles: **Buyers**, **Sellers**, and **Administrators**, supported by an autonomous background engine.
 
-### System Feature Matrix
+### Feature Architecture
 
 ```mermaid
-flowchart TD
-    Root["🏷️ ZeoAuction Platform"]
-
-    subgraph Buyers["👤 Buyer Experience"]
-        B1["Gmail OTP Authentication"]
-        B2["15-Min JWT Session"]
-        B3["WebSocket Bidding Room"]
-        B4["Anti-Snipe Countdown"]
-        B5["Razorpay Checkout"]
-        B6["Escrow Buyer Protection"]
-    end
-
-    subgraph Sellers["🏪 Seller Experience"]
-        S1["Aadhaar QR Code Upload"]
-        S2["2048-Bit RSA Offline Verify"]
-        S3["KYC Listing Gate"]
-        S4["Multi-Photo S3 Upload"]
-        S5["Reserve Price Controls"]
-        S6["Escrow Payout Tracking"]
-    end
-
-    subgraph Admins["🛡️ Admin & Moderation"]
-        A1["KYC Review Queue"]
-        A2["Real-Time Fraud Alerts"]
-        A3["Append-Only Audit Ledger"]
-        A4["Dispute Resolution"]
-        A5["Listing Takedown & Bans"]
-    end
-
-    subgraph Engine["⚙️ Autonomous Engine"]
-        E1["Sub-Ms Redis Bid Lock"]
-        E2["Kafka Event Streaming"]
-        E3["Bid-Flusher Batch Persist"]
-        E4["Escrow-Sweep 60s Cron"]
-    end
-
-    Root --> Buyers
-    Root --> Sellers
-    Root --> Admins
-    Root --> Engine
+flowchart LR
+    Buyers["👤 Buyers"] --> Sellers["🏪 Sellers"]
+    Sellers --> Admin["🛡️ Admin"]
+    Admin --> Engine["⚙️ Engine"]
 ```
 
 ### A. Authentication, User Management & Verification
-- **Email Verification & Registration**: New users register with an email, password, and display name. Registration requires email verification via a 6-digit Gmail OTP or verification link before first login.
-- **Stateless JWT Sessions**: 15-minute access tokens carry identity (`sub`), user role (`buyer`, `seller`, `admin`), KYC verification status (`kyc_status`), and account status (`suspended`).
-- **Secure Refresh Token Rotation**: Refresh tokens are stored strictly as SHA-256 hashes (`hash_refresh_token`). A single refresh token rotation invalidates previous tokens and issues a new pair.
-- **Role & KYC Gating Middleware**: FastAPI dependency (`zeo_common.auth`) intercepts incoming requests and rejects unauthorized calls with uniform error envelopes.
+- **Email Verification & Registration**: Email, password, and display name registration with 6-digit Gmail OTP verification.
+- **Stateless JWT Sessions**: 15-minute access tokens carrying `sub`, role (`buyer`, `seller`, `admin`), and `kyc_status`.
+- **Hashed Refresh Tokens**: Stored strictly as SHA-256 hashes (`hash_refresh_token`) with rotation on every refresh.
+- **Role & KYC Middleware**: Uniform authorization gating on protected endpoints.
 
 ### B. Seller Onboarding & KYC Verification Gate
-- **Pre-Listing KYC Gate**: Sellers cannot draft or publish auctions without passing KYC verification (`kyc_status: approved`).
-- **Aadhaar Secure QR Code Upload**: Sellers upload a photograph or scan of their UIDAI Secure QR code.
-- **Offline Cryptographic Verification**: The `kyc` service parses the QR payload, extracts UIDAI XML demographic data, and verifies the 2048-bit RSA digital signature against UIDAI's offline public certificate (`SHA256withRSA`).
-- **Document Management**: Verification documents and photos are stored in private Supabase S3 buckets with time-limited presigned URLs.
+- **Pre-Listing Gate**: Listing creation is strictly gated by approved seller KYC (`kyc_status: approved`).
+- **Aadhaar Secure QR Upload**: Photograph or scan upload of UIDAI Secure QR code.
+- **Offline Cryptographic Check**: Offline verification against UIDAI's 2048-bit RSA public key (`SHA256withRSA`).
+- **Private S3 Storage**: Document images stored in private Supabase S3 buckets with time-limited presigned URLs.
 
-### C. Catalog, Listing & Lifecycle Orchestration
-- **Listing Creation**: Verified sellers create listings specifying title, category, starting price, reserve price, increment rules, and scheduled duration.
-- **Multi-Photo Management**: Sellers upload up to 6 photos (JPEG/PNG/WebP) directly streamed to S3-compatible storage.
-- **Strict State Machine**: Auctions transition predictably:
-  $$\text{DRAFT} \longrightarrow \text{SCHEDULED} \longrightarrow \text{OPEN} \longrightarrow \text{CLOSING} \longrightarrow \text{CLOSED} \longrightarrow \text{SETTLED / CANCELLED}$$
-- **Anti-Snipe Extensions**: Bids placed in the final minutes automatically extend the auction clock to ensure fair closing.
+### C. Catalog & Auction Lifecycle Orchestration
+- **Listing Creation**: Multi-photo uploads, reserve price, increment rules, and scheduled duration.
+- **State Machine**: Predictable auction lifecycle transitions:
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> DRAFT
+    DRAFT --> OPEN
+    OPEN --> CLOSING
+    CLOSING --> CLOSED
+    CLOSED --> SETTLED
+    SETTLED --> [*]
+```
+
+- **Anti-Snipe Guard**: Bids in the final minutes automatically extend the clock by 60 seconds.
 
 ### D. Real-Time High-Throughput Bidding
-- **Sub-Millisecond Bid Ingestion**: Bids are validated against the current high bid and reserve rules using Upstash Redis.
-- **Idempotency Protection**: Every bid submission requires an `Idempotency-Key` header; retries return the original accepted bid without duplicating entries.
-- **Dynamic Increment Pricing**: The `pricing` service calculates dynamic minimum bid increments based on current bid brackets.
-- **WebSocket Gateway (`ws-gateway`)**: Broadcasts real-time bid updates, countdown clocks, and outbid events to connected browser rooms.
-- **Asynchronous Batch Flushing (`bid-flusher`)**: High-velocity in-memory bids are buffered in Redis/Kafka and flushed periodically to PostgreSQL in batches of 500 to protect the database from connection exhaustion.
+- **In-Memory Lock**: Sub-millisecond atomic price locking in Upstash Redis.
+- **Idempotency Protection**: Every bid requires an `Idempotency-Key` header to prevent duplicate bids.
+- **Dynamic Increment Pricing**: Automated bid increment adjustments based on current price brackets.
+- **WebSocket Gateway (`ws-gateway`)**: Real-time push of bid changes and countdown timers to connected browsers.
+- **Batch Persistence (`bid-flusher`)**: High-velocity bids buffered in memory and flushed to PostgreSQL in batches of 500.
 
-### E. Post-Auction Settlement, Razorpay & Escrow
-- **Automatic Order Generation**: When an auction closes, the system generates an order and invoices the winning bidder.
-- **Razorpay Checkout Integration**: Winners pay via Razorpay Checkout in test mode.
-- **Webhook Authorization**: Payments are authorized and captured via cryptographic webhook signatures (`RAZORPAY_WEBHOOK_SECRET`).
-- **Double-Entry Escrow Ledger**: Captured funds are deposited into an append-only simulated escrow ledger (`payment.escrow_ledger`).
-- **Buyer Protection Window & Sweep**: Funds remain locked in escrow for a designated protection period. If no dispute is lodged, the `escrow-sweep` cron worker automatically settles and releases seller payout.
+### E. Post-Auction Settlement & Escrow
+- **Order Generation**: Automatic order created for the highest bidder when auction closes.
+- **Razorpay Checkout**: Test-mode payment integration with cryptographic HMAC-SHA256 webhook capture.
+- **Double-Entry Escrow Ledger**: Captured funds held in simulated escrow (`payment.escrow_ledger`).
+
+```mermaid
+flowchart LR
+    Order["1. Order"] --> Pay["2. Razorpay"] --> Escrow["3. Escrow Lock"] --> Release["4. Seller Payout"]
+```
 
 ### F. Dispute Resolution & Platform Trust
-- **Dispute Filing**: Buyers can open a dispute before the protection window closes, providing reasons and image evidence.
-- **In-Flight Fraud Detection**: The `fraud-detector` worker consumes the Kafka `bid.events` stream in real time, detecting suspicious shill bidding or velocity spikes.
-- **Admin Moderation Portal**: Administrators review pending KYC submissions, monitor fraud alerts, inspect immutable audit logs, and adjudicate disputes.
+- **Dispute Filing**: Buyers can dispute an order during the 48-hour inspection window.
+- **In-Flight Fraud Detection**: Real-time Kafka consumer detecting velocity spikes and shill bidding.
+- **Admin Portal**: Identity review queue, fraud monitoring, audit logs, and dispute adjudication.
 
 ---
 
@@ -106,117 +83,70 @@ flowchart TD
 ```mermaid
 sequenceDiagram
     autonumber
-    actor User as 🌐 Browser
-    participant GW as API Gateway
-    participant Auth as auth-user
-    participant Bid as bid service
-    participant Redis as Upstash Redis
-    participant DB as NeonDB
-    participant Kafka as Aiven Kafka
-    participant WS as ws-gateway
+    actor Client as 🌐 Client
+    participant GW as 🔀 Gateway
+    participant Auth as 🔐 Auth
+    participant Bid as ⚡ Bid
 
-    Note over User,DB: Authentication Flow
-    User->>GW: POST /api/v1/auth/login
-    GW->>Auth: Forward login request
-    Auth->>DB: Query auth.users
-    DB-->>Auth: User record found
-    Auth-->>GW: Access JWT + Refresh Token
-    GW-->>User: Return token pair
+    Client->>GW: POST /auth/login
+    GW->>Auth: Verify user
+    Auth-->>Client: 200 (JWT Token)
 
-    Note over User,WS: Real-Time Bidding Flow
-    User->>GW: POST /api/v1/auctions/id/bids
-    GW->>Bid: Forward bid request
-    Bid->>Redis: Atomic price lock check
-    Redis-->>Bid: Lock acquired
-    Bid-->>GW: 201 BidAccepted
-    GW-->>User: Bid confirmed
-    Bid-)Kafka: Publish BidPlacedEvent
-    Kafka-)WS: Consume bid event
-    WS-)User: Broadcast via WebSocket
+    Client->>GW: POST /bids
+    GW->>Bid: Submit bid
+    Bid-->>Client: 201 (Accepted)
 ```
 
 ### Full-Stack Architecture Tiers
 
-| Tier | Component | Responsibilities & Integration Details |
+| Tier | Technology | Core Responsibilities |
 | :--- | :--- | :--- |
-| **Frontend Tier** | **React 18 SPA (TypeScript)** | • Clean component hierarchy with Tailwind CSS.<br/>• Dedicated API layer (`src/lib/api/index.ts`) abstracting network calls.<br/>• Centralized session manager with automatic JWT refresh on `401 UNAUTHENTICATED`.<br/>• Real-time WebSocket manager (`LiveClient`) with automatic reconnect and exponential backoff.<br/>• Configurable via `ZEO_API_GATEWAY_URL` and `ZEO_WS_URL`. |
-| **Gateway Tier** | **Nginx Reverse Proxy** | • Listens on port 80/443; terminates public traffic.<br/>• Translates path routes (`/api/v1/...`) to internal backend service containers.<br/>• Upgrades HTTP connections to WebSocket protocols for `/ws`.<br/>• Standardizes proxy headers (`Host`, `X-Real-IP`, `X-Forwarded-For`). |
-| **Backend Tier** | **13 FastAPI Microservices** | • Built on top of `libs/zeo-common`.<br/>• Standardized error envelopes (`code`, `message`, `details`, `request_id`).<br/>• Standardized health checks (`/healthz`, `/readyz`, `/metrics`).<br/>• Asynchronous I/O via Python `asyncio` and `httpx`. |
-| **Database Tier** | **NeonDB PostgreSQL** | • **Schema Isolation**: Each service owns its schema (`auth`, `kyc`, `auction`, `bid`, `payment`, `dispute`, `search`, `admin`, `notify`, `fraud`).<br/>• **No Cross-Schema Foreign Keys**: Loose coupling using standard UUIDs.<br/>• **Append-Only Guarantees**: Database triggers prevent `UPDATE` and `DELETE` operations on audit and ledger tables.<br/>• **Enforced Encryption**: Connections require `sslmode=require`. |
-| **Cache Tier** | **Upstash Redis** | • Ephemeral, high-velocity data store.<br/>• Manages bid locking, idempotency keys (`idem:{key}`), and active room connections.<br/>• Connected via TLS (`rediss://`). |
-| **Event Tier** | **Aiven Kafka** | • Asynchronous backbone for service decoupling.<br/>• Partitioned strictly by `auction_id` for deterministic sequential processing.<br/>• Authenticated via `SASL_SSL` and `SCRAM-SHA-256`. |
+| **Frontend** | React 18, Vite, TypeScript | SPA client, live WebSocket connection, JWT session management |
+| **Gateway** | Nginx Reverse Proxy | Centralized CORS, SSL termination, path routing, WebSocket upgrade |
+| **Backend** | 13 FastAPI Microservices | Stateless REST APIs, circuit breakers, standardized JSON envelopes |
+| **Database** | NeonDB PostgreSQL | Per-service schema isolation, append-only ledgers, SSL enforced |
+| **Cache** | Upstash Redis | Sub-millisecond atomic bid locking, idempotency store, TLS enabled |
+| **Event Bus** | Aiven Kafka | Sequential event broker, partition by auction_id, SASL_SSL auth |
 
 ---
 
-## 3. API Integration (On-Need Basis)
+## 3. API Integration Architecture
 
-ZeoAuction enforces a strict distinction between **synchronous REST** calls and **asynchronous event-driven** calls. Synchronous HTTP is used only when the caller cannot proceed without an immediate answer. All other side effects are handled asynchronously through Kafka.
+ZeoAuction separates **synchronous REST** calls from **asynchronous Kafka event streaming**:
 
 ```mermaid
-flowchart TD
-    subgraph Sync["🔄 Synchronous REST Calls"]
-        CT1["CT-1: bid → auction-orchestrator\nGET /auctions/id/state"]
-        CT2["CT-2: auction-orchestrator → kyc\nJWT kyc_status claim direct read"]
-        CT3["CT-3: bid → pricing\nGET /pricing/id/min-increment"]
-        CT4["CT-4: auction-orchestrator → payment\nPOST /internal/orders"]
-    end
-
-    subgraph Async["📨 Asynchronous Kafka Events"]
-        K1["bid.events\n→ pricing, bid-flusher, fraud-detector, ws-gateway"]
-        K2["auction.events\n→ search-analytics, ws-gateway"]
-        K3["payment.events\n→ auction-orchestrator, escrow-sweep, ws-gateway"]
-    end
-
-    subgraph External["🌍 External 3rd-Party APIs"]
-        X1["Razorpay\nCheckout & HMAC Webhook Capture"]
-        X2["Gmail SMTP\n6-Digit OTP via TLS 587"]
-        X3["Supabase S3\nPresigned Upload URLs"]
-        X4["UIDAI Root PKI\n2048-Bit RSA Offline Verify"]
-    end
-
-    Sync --> Async
-    Async --> External
+flowchart LR
+    REST["🔄 REST (Sync)"] -->|"Events"| Kafka["📨 Kafka (Async)"] -->|"Integrate"| External["🌍 External APIs"]
 ```
 
 ### A. Synchronous Contract Boundaries (REST)
 
-The four synchronous boundaries are governed by consumer contract tests (`tests/contracts`) and protected by circuit breakers:
-
-| Contract ID | Caller $\to$ Target | Endpoint | Fallback Policy on Failure |
+| Contract | Caller $\to$ Target | Endpoint | Fallback Policy |
 | :--- | :--- | :--- | :--- |
-| **CT-1** | `bid` $\to$ `auction-orchestrator` | `GET /api/v1/auctions/{id}/state` | Circuit breaker trips after 5 failures in 10s. Serves cached state if $< 2\text{s}$ old; otherwise raises `AUCTION_STATE_UNAVAILABLE`. |
-| **CT-2** | `auction-orchestrator` $\to$ `kyc` | *Zero Network Call* | Zero network call on the critical path. The listing gate validates the seller's `kyc_status` claim directly from the cryptographically signed JWT. |
-| **CT-3** | `bid` $\to$ `pricing` | `GET /api/v1/pricing/{id}/min-increment` | Falls back to last cached increment; marks bid as `increment_stale`. |
-| **CT-4** | `auction-orchestrator` $\to$ `payment-escrow` | `POST /internal/orders` | Auction remains `CLOSED`; background timer retries order creation with the same `Idempotency-Key`. |
+| **CT-1** | `bid` $\to$ `auction-orchestrator` | `GET /api/v1/auctions/{id}/state` | Circuit breaker (5 fails/10s); serves cached state if < 2s |
+| **CT-2** | `auction-orchestrator` $\to$ `kyc` | *Direct Token Validation* | Reads `kyc_status` claim directly from signed JWT |
+| **CT-3** | `bid` $\to$ `pricing` | `GET /api/v1/pricing/{id}/min-increment` | Falls back to cached increment; marks bid stale |
+| **CT-4** | `auction-orchestrator` $\to$ `payment-escrow` | `POST /internal/orders` | Background retry worker with idempotency key |
 
 ### B. Asynchronous Event-Driven APIs (Kafka)
 
-All cross-service data projections and reactive actions occur asynchronously over Kafka topics:
-
 | Topic Name | Key | Event Types | Consumers & Actions |
 | :--- | :--- | :--- | :--- |
-| `bid.events` | `auction_id` | `BidPlaced`, `BidOutbid` | • **pricing**: Recalculates dynamic bracket increments.<br/>• **bid-flusher**: Buffers and persists accepted bids to database.<br/>• **fraud-detector**: Evaluates real-time bid velocity and shill scoring.<br/>• **ws-gateway**: Pushes real-time updates to connected browsers. |
-| `auction.events` | `auction_id` | `AuctionOpened`, `AuctionClosing`, `AuctionClosed` | • **search-analytics**: Updates full-text search index.<br/>• **ws-gateway**: Emits lifecycle status changes to room participants. |
-| `payment.events` | `order_id` | `PaymentCaptured`, `EscrowReleased`, `DisputeOpened` | • **auction-orchestrator**: Marks auction as `SETTLED`.<br/>• **escrow-sweep**: Cancels automatic sweep timer if dispute opened.<br/>• **ws-gateway**: Emits payment confirmation to buyer. |
+| `bid.events` | `auction_id` | `BidPlaced`, `BidOutbid` | `pricing` increments, `bid-flusher` DB sync, `ws-gateway` live feed |
+| `auction.events` | `auction_id` | `AuctionOpened`, `AuctionClosed` | `search-analytics` catalog indexing, `ws-gateway` status change |
+| `payment.events` | `order_id` | `PaymentCaptured`, `EscrowReleased` | `auction-orchestrator` settlement, `escrow-sweep` timer cancel |
 
 ### C. Third-Party External API Integrations
-
-1. **Razorpay Payments**:
-   - `orders.create`: Initiates payment session when winner proceeds to checkout.
-   - Webhook verification: Validates `payment.authorized` events using HMAC-SHA256 signatures before capturing funds to escrow.
-2. **Gmail SMTP Service**:
-   - Sends transactional 6-digit OTP verification codes via TLS port 587 using Google App Passwords.
-3. **Supabase S3 API**:
-   - Generates presigned URLs for direct multi-part photo uploads, reducing server CPU and memory overhead.
-4. **UIDAI Public Certificate Registry**:
-   - Offline verification of Aadhaar QR demographic data using UIDAI's trusted certificate root (`SHA256withRSA`).
+1. **Razorpay Payments**: Checkout session generation and cryptographic webhook capture.
+2. **Gmail SMTP**: Transactional 6-digit OTP delivery over TLS port 587.
+3. **Supabase S3**: Presigned URLs for direct multi-part photo uploads.
+4. **UIDAI Public Certificate Registry**: 2048-bit RSA offline verification of Aadhaar QR demographic data.
 
 ---
 
 ## 4. Verification & Testing Strategy
 
-The integrated platform is protected by a multi-tier testing suite:
-- **Unit Tests**: Executed across all 13 services with an enforced 80% code coverage threshold.
-- **Contract Tests (`tests/contracts`)**: Verifies that synchronous schema models and circuit breaker fallbacks strictly comply with API agreements.
-- **End-to-End Suite (`tests/e2e`)**: Validates complete user journeys (seller KYC $\to$ listing creation $\to$ live bidding $\to$ auction close $\to$ payment capture $\to$ escrow sweep).
-- **Frontend Vitest Suite (`npm run test`)**: 10 test suites covering mock services, money formatting, WebSocket live client reconnection, and form validation.
+- **Unit Tests**: Enforced 80% minimum code coverage floor across all 13 microservices.
+- **Contract Tests (`tests/contracts`)**: Schema compatibility and circuit-breaker verification.
+- **End-to-End Suite (`tests/e2e`)**: Full user journey from seller KYC to bid close and settlement.
+- **Frontend Vitest Suite (`npm run test`)**: 10 suites covering money, live WebSocket client, and form flows (66/66 passing).
