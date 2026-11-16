@@ -12,6 +12,7 @@ When connecting to NeonDB or shared PostgreSQL instances where all services shar
 Every pooled connection then runs ``SET search_path = <schema>, public``.
 """
 
+import logging
 import os
 from typing import Any
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
@@ -19,6 +20,22 @@ from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 import asyncpg
 
 from zeo_common.health import ReadinessCheck
+
+logger = logging.getLogger("zeo.db")
+
+
+def mask_dsn(dsn: str) -> str:
+    """Mask password in PostgreSQL DSN for safe logging."""
+    try:
+        parsed = urlparse(dsn)
+        if parsed.password:
+            netloc = f"{parsed.username or ''}:****@{parsed.hostname or ''}"
+            if parsed.port:
+                netloc += f":{parsed.port}"
+            return urlunparse(parsed._replace(netloc=netloc))
+        return dsn
+    except Exception:
+        return "<dsn>"
 
 
 async def create_pool(
@@ -53,12 +70,33 @@ async def create_pool(
         if target_schema:
             await connection.execute(f"SET search_path = {target_schema}, public")
 
-    return await asyncpg.create_pool(
-        clean_dsn,
-        min_size=min_size,
-        max_size=max_size,
-        init=_init_connection,
+    logger.info(
+        "Connecting to PostgreSQL at %s (schema=%s, min_size=%d, max_size=%d)",
+        mask_dsn(clean_dsn),
+        target_schema or "public",
+        min_size,
+        max_size,
     )
+
+    try:
+        pool = await asyncpg.create_pool(
+            clean_dsn,
+            min_size=min_size,
+            max_size=max_size,
+            init=_init_connection,
+        )
+        logger.info(
+            "PostgreSQL connection pool established successfully (schema: %s)",
+            target_schema or "public",
+        )
+        return pool
+    except Exception as exc:
+        logger.exception(
+            "Failed to establish PostgreSQL connection pool at %s: %s",
+            mask_dsn(clean_dsn),
+            exc,
+        )
+        raise
 
 
 def postgres_check(pool: Any) -> ReadinessCheck:

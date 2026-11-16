@@ -14,23 +14,49 @@ This document provides a comprehensive breakdown of the **ZeoAuction** platform,
 
 ZeoAuction is designed with a **Trust and Safety First** philosophy, serving three primary user roles: **Buyers/Bidders**, **Sellers**, and **Administrators**.
 
-### System Feature Matrix (PDF-Ready Overview)
+### System Feature Matrix
 
-```text
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           ZEOAUCTION SYSTEM MATRIX                          │
-└──────┬──────────────────────┬──────────────────────┬────────────────────────┘
-       │                      │                      │
-┌──────▼─────────────┐ ┌──────▼─────────────┐ ┌──────▼─────────────┐ ┌───────────────────┐
-│  BUYER EXPERIENCE  │ │  SELLER EXPERIENCE │ │ADMIN & MODERATION  │ │ AUTONOMOUS ENGINE │
-├────────────────────┤ ├────────────────────┤ ├────────────────────┤ ├───────────────────┤
-│• Gmail OTP Auth    │ │• Aadhaar Secure QR │ │• KYC Review Queue  │ │• Redis Bid Lock   │
-│• 15-min JWT Session│ │• Offline RSA Check │ │• Fraud Alert Stream│ │• Kafka Event Bus  │
-│• Real-Time WS Bids │ │• KYC Listing Gate  │ │• Escrow Audit Trail│ │• Bid-Flusher Sync │
-│• Anti-Snipe Clocks │ │• Multi-Photo S3    │ │• Dispute Resolution│ │• Escrow-Sweep Cron│
-│• Razorpay Checkout │ │• Reserve Controls  │ │• User & Bid Banning│ │• Dynamic Pricing  │
-│• Escrow Protection │ │• Payout Tracking   │ │• System Metrics    │ │• State Machines   │
-└────────────────────┘ └────────────────────┘ └────────────────────┘ └───────────────────┘
+```mermaid
+flowchart TD
+    Root["🏷️ ZeoAuction Platform"]
+
+    subgraph Buyers["👤 Buyer Experience"]
+        B1["Gmail OTP Authentication"]
+        B2["15-Min JWT Session"]
+        B3["WebSocket Bidding Room"]
+        B4["Anti-Snipe Countdown"]
+        B5["Razorpay Checkout"]
+        B6["Escrow Buyer Protection"]
+    end
+
+    subgraph Sellers["🏪 Seller Experience"]
+        S1["Aadhaar QR Code Upload"]
+        S2["2048-Bit RSA Offline Verify"]
+        S3["KYC Listing Gate"]
+        S4["Multi-Photo S3 Upload"]
+        S5["Reserve Price Controls"]
+        S6["Escrow Payout Tracking"]
+    end
+
+    subgraph Admins["🛡️ Admin & Moderation"]
+        A1["KYC Review Queue"]
+        A2["Real-Time Fraud Alerts"]
+        A3["Append-Only Audit Ledger"]
+        A4["Dispute Resolution"]
+        A5["Listing Takedown & Bans"]
+    end
+
+    subgraph Engine["⚙️ Autonomous Engine"]
+        E1["Sub-Ms Redis Bid Lock"]
+        E2["Kafka Event Streaming"]
+        E3["Bid-Flusher Batch Persist"]
+        E4["Escrow-Sweep 60s Cron"]
+    end
+
+    Root --> Buyers
+    Root --> Sellers
+    Root --> Admins
+    Root --> Engine
 ```
 
 ### A. Authentication, User Management & Verification
@@ -75,34 +101,38 @@ ZeoAuction is designed with a **Trust and Safety First** philosophy, serving thr
 
 ## 2. Frontend + Backend + Database Integration
 
-### Real-Time Bidding & Auth Flow (PDF-Ready Sequence)
+### Real-Time Bidding & Auth Flow
 
-```text
-┌──────────────┐     ┌──────────────┐     ┌──────────────┐     ┌────────────────┐
-│ USER BROWSER │     │ API GATEWAY  │     │ MICROSERVICE │     │ DATA/EVENT BUS │
-└──────┬───────┘     └──────┬───────┘     └──────┬───────┘     └───────┬────────┘
-       │                    │                    │                     │
-       │ 1. POST /auth/login│                    │                     │
-       ├───────────────────►│ Forward to auth    │                     │
-       │                    ├───────────────────►│ Query auth.users    │
-       │                    │                    ├────────────────────►│ (NeonDB)
-       │                    │                    │◄────────────────────┤
-       │                    │◄───────────────────┤ Return User Record  │
-       │◄───────────────────┤ Return Access JWT  │                     │
-       │                    │                    │                     │
-       │ 2. POST /bids (JWT)│                    │                     │
-       ├───────────────────►│ Forward to bid     │                     │
-       │                    ├───────────────────►│ Atomic Bid Check    │
-       │                    │                    ├────────────────────►│ (Upstash Redis)
-       │                    │                    │◄────────────────────┤ Price updated
-       │                    │◄───────────────────┤ Return 201 Created  │
-       │◄───────────────────┤ Return BidAccepted │                     │
-       │                    │                    │ Publish BidPlaced   │
-       │                    │                    ├────────────────────►│ (Aiven Kafka)
-       │                    │ Consume BidPlaced  │                     │
-       │                    │◄─────────────────────────────────────────┤
-       │◄───────────────────┤ Broadcast real-time bid via WebSocket (/ws)
-       │                    │                    │                     │
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as 🌐 Browser
+    participant GW as API Gateway
+    participant Auth as auth-user
+    participant Bid as bid service
+    participant Redis as Upstash Redis
+    participant DB as NeonDB
+    participant Kafka as Aiven Kafka
+    participant WS as ws-gateway
+
+    Note over User,DB: Authentication Flow
+    User->>GW: POST /api/v1/auth/login
+    GW->>Auth: Forward login request
+    Auth->>DB: Query auth.users
+    DB-->>Auth: User record found
+    Auth-->>GW: Access JWT + Refresh Token
+    GW-->>User: Return token pair
+
+    Note over User,WS: Real-Time Bidding Flow
+    User->>GW: POST /api/v1/auctions/id/bids
+    GW->>Bid: Forward bid request
+    Bid->>Redis: Atomic price lock check
+    Redis-->>Bid: Lock acquired
+    Bid-->>GW: 201 BidAccepted
+    GW-->>User: Bid confirmed
+    Bid-)Kafka: Publish BidPlacedEvent
+    Kafka-)WS: Consume bid event
+    WS-)User: Broadcast via WebSocket
 ```
 
 ### Full-Stack Architecture Tiers
@@ -122,32 +152,30 @@ ZeoAuction is designed with a **Trust and Safety First** philosophy, serving thr
 
 ZeoAuction enforces a strict distinction between **synchronous REST** calls and **asynchronous event-driven** calls. Synchronous HTTP is used only when the caller cannot proceed without an immediate answer. All other side effects are handled asynchronously through Kafka.
 
-```text
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                   SYNCHRONOUS REST APIS (CIRCUIT-BROKEN)                    │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ • CT-1: bid ───────────────► auction-orchestrator (GET /auctions/{id}/state) │
-│ • CT-2: auction-orchestrator► kyc (Read JWT kyc_status claim directly)      │
-│ • CT-3: bid ───────────────► pricing (GET /pricing/{id}/min-increment)      │
-│ • CT-4: auction-orchestrator► payment-escrow (POST /internal/orders)        │
-└──────────────────────────────────────┬──────────────────────────────────────┘
-                                       │
-┌──────────────────────────────────────▼──────────────────────────────────────┐
-│                    ASYNCHRONOUS EVENT STREAMING (KAFKA)                     │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ • bid.events      ──► pricing, bid-flusher, fraud-detector, ws-gateway      │
-│ • auction.events  ──► search-analytics, ws-gateway                          │
-│ • payment.events  ──► auction-orchestrator, escrow-sweep, ws-gateway        │
-└──────────────────────────────────────┬──────────────────────────────────────┘
-                                       │
-┌──────────────────────────────────────▼──────────────────────────────────────┐
-│                        EXTERNAL 3RD-PARTY SERVICE APIS                      │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ • Razorpay API    ──► Checkout session creation & HMAC-SHA256 webhook capture│
-│ • Gmail SMTP      ──► 6-digit transactional OTP email delivery              │
-│ • Supabase S3 API ──► Presigned URLs for photos & KYC document storage      │
-│ • UIDAI Root PKI  ──► 2048-bit RSA offline public key signature check       │
-└─────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    subgraph Sync["🔄 Synchronous REST Calls"]
+        CT1["CT-1: bid → auction-orchestrator\nGET /auctions/id/state"]
+        CT2["CT-2: auction-orchestrator → kyc\nJWT kyc_status claim direct read"]
+        CT3["CT-3: bid → pricing\nGET /pricing/id/min-increment"]
+        CT4["CT-4: auction-orchestrator → payment\nPOST /internal/orders"]
+    end
+
+    subgraph Async["📨 Asynchronous Kafka Events"]
+        K1["bid.events\n→ pricing, bid-flusher, fraud-detector, ws-gateway"]
+        K2["auction.events\n→ search-analytics, ws-gateway"]
+        K3["payment.events\n→ auction-orchestrator, escrow-sweep, ws-gateway"]
+    end
+
+    subgraph External["🌍 External 3rd-Party APIs"]
+        X1["Razorpay\nCheckout & HMAC Webhook Capture"]
+        X2["Gmail SMTP\n6-Digit OTP via TLS 587"]
+        X3["Supabase S3\nPresigned Upload URLs"]
+        X4["UIDAI Root PKI\n2048-Bit RSA Offline Verify"]
+    end
+
+    Sync --> Async
+    Async --> External
 ```
 
 ### A. Synchronous Contract Boundaries (REST)

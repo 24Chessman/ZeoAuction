@@ -1,5 +1,6 @@
 """The service template: every ZeoAuction service is created by :func:`create_app`."""
 
+import logging
 import os
 
 from fastapi import FastAPI
@@ -12,6 +13,7 @@ from zeo_common.metrics import create_registry, metrics_router
 from zeo_common.request_context import RequestIdMiddleware
 
 API_PREFIX = "/api/v1"
+logger = logging.getLogger("zeo.app")
 
 
 def cors_origins() -> list[str]:
@@ -40,6 +42,7 @@ def create_app(service_name: str, version: str = "0.1.0", description: str = "")
     on ``app.state.readiness``.
     """
     configure_logging(service_name)
+    logger.info("Initializing ZeoAuction service '%s' (v%s)", service_name, version)
 
     app = FastAPI(
         title=f"ZeoAuction {service_name}",
@@ -56,6 +59,7 @@ def create_app(service_name: str, version: str = "0.1.0", description: str = "")
     app.add_middleware(RequestIdMiddleware)
     origins = cors_origins()
     if origins:
+        logger.info("[%s] CORS allowed origins: %s", service_name, origins)
         # The SPA calls the APIs directly in local development (Vite on :5173).
         app.add_middleware(
             CORSMiddleware,
@@ -65,6 +69,8 @@ def create_app(service_name: str, version: str = "0.1.0", description: str = "")
             allow_headers=["*"],
             expose_headers=["X-Request-ID", "Idempotent-Replay"],
         )
+    else:
+        logger.info("[%s] No service-level CORS set; CORS handled centrally by API Gateway", service_name)
     install_error_handlers(app)
     app.include_router(health_router(service_name, version, app.state.readiness))
     app.include_router(metrics_router(app.state.metrics))

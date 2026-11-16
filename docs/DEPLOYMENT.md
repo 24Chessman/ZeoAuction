@@ -15,33 +15,64 @@ This document outlines the deployment architecture, hosting infrastructure, rout
 
 ZeoAuction employs a distributed microservice architecture. The frontend Single-Page Application (SPA) never connects directly to private backend databases or internal service ports; instead, all HTTP and WebSocket requests route through a centralized **Nginx API Gateway**.
 
-### High-Level Request Flow (PDF-Ready Architecture)
+### High-Level Request Flow
 
-```text
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                            USER / BROWSER CLIENT                            │
-│                     https://zeo-auction-92pm.vercel.app                     │
-└──────────────────────────────────────┬──────────────────────────────────────┘
-                                       │ HTTPS (REST) / WSS (WebSockets)
-                                       ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                   CENTRALIZED API GATEWAY (Render Nginx)                    │
-│                    https://zeo-api-gateway.onrender.com                     │
-│           [SSL Termination • Request Routing • Header Normalization]        │
-└──────┬──────────┬──────────┬──────────┬──────────┬──────────┬────────┬──────┘
-       │          │          │          │          │          │        │
-┌──────▼─────┐┌───▼──────┐┌──▼───────┐┌─▼────────┐┌▼─────────┐┌▼───────┐┌▼─────┐
-│ auth-user  ││   kyc    ││auction-or││   bid    ││ pricing  ││payment ││  ws  │
-│ Port 8001  ││ Port 8002││Port 8003 ││Port 8004 ││Port 8005 ││Port8006││P.8010│
-└──────┬─────┘└───┬──────┘└──┬───────┘└──┬───────┘└──┬───────┘└──┬────┘└──┬───┘
-       │          │          │          │          │          │        │
-┌──────┴──────────┴──────────┴──────────┴──────────┴──────────┴────────┴──────┐
-│                      MANAGED CLOUD DATA INFRASTRUCTURE                       │
-│ • NeonDB PostgreSQL (Dedicated Schemas: auth, kyc, auction, bid, payment)   │
-│ • Upstash Redis (TLS / Sub-millisecond Bidding Engine & Lock Store)         │
-│ • Aiven Kafka (SASL_SSL / SCRAM-SHA-256 Topics: bid.events, auction.events) │
-│ • Supabase S3 Object Storage (Private KYC Documents & Listing Photos)       │
-└─────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    Browser["🌐 Browser / Client\nzeo-auction-92pm.vercel.app"]
+    Gateway["🔀 Nginx API Gateway\nzeo-api-gateway.onrender.com\nSSL · Route Dispatch · CORS"]
+
+    subgraph Services["⚙️ Backend Web Services"]
+        Auth["auth-user\n:8001"]
+        KYC["kyc\n:8002"]
+        Auction["auction-orchestrator\n:8003"]
+        Bid["bid\n:8004"]
+        Pricing["pricing\n:8005"]
+        Payment["payment-escrow\n:8006"]
+        Dispute["dispute\n:8007"]
+        Search["search-analytics\n:8008"]
+        Admin["admin-moderation\n:8009"]
+        WS["ws-gateway\n:8010"]
+    end
+
+    subgraph Workers["🔁 Background Workers"]
+        Fraud["fraud-detector\nKafka Stream"]
+        Flusher["bid-flusher\nBatch Sync"]
+        Sweep["escrow-sweep\n60s Cron"]
+    end
+
+    subgraph DataStores["☁️ Managed Cloud Infrastructure"]
+        DB[("NeonDB PostgreSQL\nIsolated Schemas")]
+        Redis[("Upstash Redis\nTLS Bid Lock")]
+        Kafka[("Aiven Kafka\nSASL_SSL Event Bus")]
+        S3[("Supabase S3\nPhotos & KYC Docs")]
+    end
+
+    Browser -->|"HTTPS / WSS"| Gateway
+    Gateway --> Auth
+    Gateway --> KYC
+    Gateway --> Auction
+    Gateway --> Bid
+    Gateway --> Pricing
+    Gateway --> Payment
+    Gateway --> Dispute
+    Gateway --> Search
+    Gateway --> Admin
+    Gateway --> WS
+    Auth --> DB
+    KYC --> DB
+    KYC --> S3
+    Auction --> DB
+    Bid --> Redis
+    Bid --> Kafka
+    Payment --> DB
+    Dispute --> DB
+    Search --> DB
+    Admin --> DB
+    WS --> Redis
+    Fraud --> Kafka
+    Flusher --> DB
+    Sweep --> DB
 ```
 
 ### Gateway Route Mapping Table
@@ -146,40 +177,33 @@ ZEO_FEATURED_AUCTIONS=00000000-0000-4000-8000-000000000201
 
 ZeoAuction uses **GitHub Actions** (`.github/workflows/ci.yml`) for end-to-end continuous integration and automated deployment verification. Every pull request and merge to `main` executes a rigorous pipeline.
 
-### Pipeline Architecture (PDF-Ready Flowchart)
+### Pipeline Architecture
 
-```text
-┌─────────────────┐     ┌──────────────────────┐     ┌──────────────────────┐
-│  1. Linting     ├────►│  2. Shared Lib Tests ├────►│  4. Service Matrix   │
-│  (Ruff Check)   │     │  (80% Coverage Floor)│     │  (13 Services x 80%) │
-└────────┬────────┘     └──────────────────────┘     └──────────┬───────────┘
-         │                                                      │
-         ├──────────────► 3. Contract Tests (tests/contracts)   │
-         │                                                      │
-         ▼                                                      ▼
-┌─────────────────┐     ┌──────────────────────┐     ┌──────────────────────┐
-│  8. Frontend CI │     │  7. Compose Check    │◄────┤  5. Docker Build     │
-│  (Lint/Types/   │     │  (docker-compose.yml)│     │  (Image validation)  │
-│   Tests/Build)  │     └──────────┬───────────┘     └──────────┬───────────┘
-└────────┬────────┘                │                            │
-         │                         ▼                            │
-         │              ┌──────────────────────┐                │
-         └─────────────►│  6. End-to-End Tests │◄───────────────┘
-                        │  (Full System Suite) │
-                        └──────────┬───────────┘
-                                   │
-                                   ▼
-                        ┌──────────────────────┐
-                        │  9. GATE STATUS CHECK│ (Required Branch Protection)
-                        │  (All Stages Passed) │
-                        └──────────┬───────────┘
-                                   │ Merge to main
-                                   ▼
-                        ┌──────────────────────┐
-                        │ 10. AUTO DEPLOYMENT  │
-                        │ • Vercel (Frontend)  │
-                        │ • Render (Backend+GW)│
-                        └──────────────────────┘
+```mermaid
+flowchart TD
+    Lint["🔍 1. Ruff Linting\nCode Quality & Security Checks"]
+    SharedLib["📦 2. Shared Library Tests\n80% Coverage Floor"]
+    Contracts["📄 3. Consumer Contract Tests\nSchema Compatibility"]
+    Matrix["🧪 4. Service Matrix Tests\n13 Services in Parallel"]
+    Docker["🐳 5. Docker Image Builds\nMulti-Stage Validation"]
+    E2E["🔗 6. End-to-End Test Suite\nFull Journey Validation"]
+    Compose["🗂️ 7. Docker Compose Check\nConfig Validation"]
+    Frontend["🖥️ 8. Frontend CI\nLint · Types · Tests · Build"]
+    Gate["🚦 9. Gate Status Check\nBranch Protection Required"]
+    Deploy["🚀 10. Auto Deploy\nVercel + Render"]
+
+    Lint --> SharedLib
+    SharedLib --> Contracts
+    Contracts --> Matrix
+    Matrix --> Docker
+    Matrix --> E2E
+    Matrix --> Compose
+    Lint --> Frontend
+    Docker --> Gate
+    E2E --> Gate
+    Compose --> Gate
+    Frontend --> Gate
+    Gate -->|"Merge to main"| Deploy
 ```
 
 ### Pipeline Stages

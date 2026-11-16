@@ -67,11 +67,24 @@ def error_response(
 
 def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(ApiError)
-    async def _api_error(_: Request, exc: ApiError) -> JSONResponse:
+    async def _api_error(request: Request, exc: ApiError) -> JSONResponse:
+        logger.warning(
+            "ApiError [%s]: %s (status=%d path=%s)",
+            exc.code,
+            exc.message,
+            exc.status_code,
+            request.url.path,
+        )
         return error_response(exc.status_code, exc.code, exc.message, exc.details)
 
     @app.exception_handler(RequestValidationError)
-    async def _validation_error(_: Request, exc: RequestValidationError) -> JSONResponse:
+    async def _validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+        logger.warning(
+            "Validation error on %s %s: %s",
+            request.method,
+            request.url.path,
+            exc.errors(),
+        )
         return error_response(
             422,
             "VALIDATION_ERROR",
@@ -80,11 +93,15 @@ def install_error_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(StarletteHTTPException)
-    async def _http_error(_: Request, exc: StarletteHTTPException) -> JSONResponse:
+    async def _http_error(request: Request, exc: StarletteHTTPException) -> JSONResponse:
         code = _HTTP_STATUS_CODES.get(exc.status_code, "HTTP_ERROR")
+        if exc.status_code >= 500:
+            logger.error("HTTP error %s on %s: %s", exc.status_code, request.url.path, exc.detail)
+        elif exc.status_code != 404:
+            logger.warning("HTTP error %s on %s: %s", exc.status_code, request.url.path, exc.detail)
         return error_response(exc.status_code, code, str(exc.detail))
 
     @app.exception_handler(Exception)
-    async def _unhandled(_: Request, exc: Exception) -> JSONResponse:
-        logger.exception("Unhandled error", exc_info=exc)
+    async def _unhandled(request: Request, exc: Exception) -> JSONResponse:
+        logger.exception("Unhandled error on %s %s", request.method, request.url.path, exc_info=exc)
         return error_response(500, "INTERNAL_ERROR", "Internal server error")
