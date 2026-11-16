@@ -6,7 +6,6 @@ import { useConnectionStatus } from "@/app/live";
 import { useTheme } from "@/app/theme";
 import { ButtonLink, KycBadge } from "@/components/ui";
 import { cn } from "@/lib/cn";
-import { useMocks } from "@/lib/config";
 import { initials } from "@/lib/format";
 import { policy } from "@/lib/policy";
 import { Logo } from "./Logo";
@@ -227,7 +226,7 @@ export function AppShell() {
           </p>
         </div>
       </footer>
-      {useMocks && <MockControls />}
+      <MockControls />
     </div>
   );
 }

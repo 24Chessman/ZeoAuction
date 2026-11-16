@@ -7,6 +7,7 @@ import { razorpayDevBridge } from "./dev/razorpayBridge";
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 
 export default defineConfig(({ mode }) => ({
+  envPrefix: ["ZEO_", "VITE_"],
   // RAZORPAY_* come from the repository's .env (git-ignored) and stay in the dev server process:
   // they are not VITE_-prefixed, so none of them reaches the bundle (ADR-0009).
   plugins: [react(), razorpayDevBridge(loadEnv(mode, repoRoot, "RAZORPAY_"))],

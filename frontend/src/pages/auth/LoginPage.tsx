@@ -17,7 +17,8 @@ export function LoginPage() {
   const location = useLocation();
   const from = (location.state as { from?: string } | null)?.from ?? "/auctions";
 
-  const [mode, setMode] = useState<AuthMode>("gmail");
+  const [mode, setMode] = useState<AuthMode>(useMocks ? "password" : "gmail");
+  const activeMode = useMocks ? "password" : mode;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [otp, setOtp] = useState("");
@@ -102,41 +103,43 @@ export function LoginPage() {
         </>
       }
     >
-      {/* Auth Method Switcher */}
-      <div className="mb-6 grid grid-cols-2 gap-1 rounded-2xl border border-line bg-surface p-1 shadow-card">
-        <button
-          type="button"
-          onClick={() => {
-            setMode("gmail");
-            setError(null);
-          }}
-          className={cn(
-            "flex items-center justify-center gap-2 rounded-xl py-2 text-xs font-semibold transition-all",
-            mode === "gmail"
-              ? "bg-midnight text-brand shadow-lift"
-              : "text-ink-muted hover:text-ink"
-          )}
-        >
-          <Mail className="size-3.5" />
-          Gmail OTP
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setMode("password");
-            setError(null);
-          }}
-          className={cn(
-            "flex items-center justify-center gap-2 rounded-xl py-2 text-xs font-semibold transition-all",
-            mode === "password"
-              ? "bg-midnight text-brand shadow-lift"
-              : "text-ink-muted hover:text-ink"
-          )}
-        >
-          <KeyRound className="size-3.5" />
-          Password
-        </button>
-      </div>
+      {/* Auth Method Switcher (Live / Prod Mode Only) */}
+      {!useMocks && (
+        <div className="mb-6 grid grid-cols-2 gap-1 rounded-2xl border border-line bg-surface p-1 shadow-card">
+          <button
+            type="button"
+            onClick={() => {
+              setMode("gmail");
+              setError(null);
+            }}
+            className={cn(
+              "flex items-center justify-center gap-2 rounded-xl py-2 text-xs font-semibold transition-all",
+              activeMode === "gmail"
+                ? "bg-midnight text-brand shadow-lift"
+                : "text-ink-muted hover:text-ink"
+            )}
+          >
+            <Mail className="size-3.5" />
+            Gmail OTP
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setMode("password");
+              setError(null);
+            }}
+            className={cn(
+              "flex items-center justify-center gap-2 rounded-xl py-2 text-xs font-semibold transition-all",
+              activeMode === "password"
+                ? "bg-midnight text-brand shadow-lift"
+                : "text-ink-muted hover:text-ink"
+            )}
+          >
+            <KeyRound className="size-3.5" />
+            Password
+          </button>
+        </div>
+      )}
 
       {copy && (
         <div className="mb-5 space-y-3">
@@ -163,7 +166,7 @@ export function LoginPage() {
         </div>
       )}
 
-      {mode === "gmail" ? (
+      {activeMode === "gmail" ? (
         !otpSent ? (
           <form onSubmit={handleSendOtp} className="space-y-5" noValidate>
             <div className="rounded-xl border border-brand/20 bg-brand-soft/40 p-3 text-xs text-brand-ink">
