@@ -3,6 +3,15 @@ map $http_upgrade $connection_upgrade {
     '' close;
 }
 
+# Dynamic CORS origin mapping (Local dev, Vercel frontend, Render services)
+map $http_origin $cors_origin {
+    default "";
+    "~^https?://localhost(:[0-9]+)?$" "$http_origin";
+    "~^https?://127\.0\.0\.1(:[0-9]+)?$" "$http_origin";
+    "~^https://.*\.vercel\.app$" "$http_origin";
+    "~^https://.*\.onrender\.com$" "$http_origin";
+}
+
 server {
     listen 80;
     server_name _;
@@ -100,6 +109,8 @@ server {
     }
 
     location / {
+        add_header 'Access-Control-Allow-Origin' $cors_origin always;
+        add_header 'Access-Control-Allow-Credentials' 'true' always;
         default_type application/json;
         return 404 '{"code":"NOT_FOUND","message":"Gateway route not found"}';
     }

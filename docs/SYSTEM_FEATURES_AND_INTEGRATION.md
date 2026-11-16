@@ -1,5 +1,11 @@
 # ZeoAuction — Feature Set, Full-Stack & API Integration Guide
 
+* **GitHub Repository**: [https://github.com/sagar-dot-bera/ZeoAuction](https://github.com/sagar-dot-bera/ZeoAuction)
+* **Live Web Application**: [https://zeo-auction-92pm.vercel.app](https://zeo-auction-92pm.vercel.app)
+* **API Gateway (Render)**: [https://zeo-api-gateway.onrender.com](https://zeo-api-gateway.onrender.com)
+
+---
+
 This document provides a comprehensive breakdown of the **ZeoAuction** platform, covering the complete functional feature set, the end-to-end integration between Frontend, Backend, and Database tiers, and synchronous vs. asynchronous API integration architectures.
 
 ---
@@ -8,42 +14,23 @@ This document provides a comprehensive breakdown of the **ZeoAuction** platform,
 
 ZeoAuction is designed with a **Trust and Safety First** philosophy, serving three primary user roles: **Buyers/Bidders**, **Sellers**, and **Administrators**.
 
-```mermaid
-flowchart TD
-    Root["ZeoAuction Core System"]
+### System Feature Matrix (PDF-Ready Overview)
 
-    subgraph Buyers["Buyer Experience"]
-        B1["Identity and Gmail OTP Verification"]
-        B2["Live WebSocket Bidding Room"]
-        B3["Anti-Snipe Countdown and Alerts"]
-        B4["Razorpay Checkout and Escrow"]
-    end
-
-    subgraph Sellers["Seller Experience"]
-        S1["Aadhaar QR Offline RSA Verification"]
-        S2["KYC Listing Gate Enforcement"]
-        S3["Multi-Photo S3 Listing Upload"]
-        S4["Order Tracking and Escrow Payout"]
-    end
-
-    subgraph Admins["Admin and Moderation"]
-        A1["KYC Submission Review Queue"]
-        A2["Real-Time Fraud Alerts and Bans"]
-        A3["Append-Only Escrow Ledger"]
-        A4["Dispute Adjudication"]
-    end
-
-    subgraph Engine["Autonomous Services"]
-        E1["Redis Sub-Millisecond Bid Lock"]
-        E2["Kafka Sequential Event Streaming"]
-        E3["Bid-Flusher Batch Database Sync"]
-        E4["Escrow-Sweep Scheduled Worker"]
-    end
-
-    Root --> Buyers
-    Root --> Sellers
-    Root --> Admins
-    Root --> Engine
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           ZEOAUCTION SYSTEM MATRIX                          │
+└──────┬──────────────────────┬──────────────────────┬────────────────────────┘
+       │                      │                      │
+┌──────▼─────────────┐ ┌──────▼─────────────┐ ┌──────▼─────────────┐ ┌───────────────────┐
+│  BUYER EXPERIENCE  │ │  SELLER EXPERIENCE │ │ADMIN & MODERATION  │ │ AUTONOMOUS ENGINE │
+├────────────────────┤ ├────────────────────┤ ├────────────────────┤ ├───────────────────┤
+│• Gmail OTP Auth    │ │• Aadhaar Secure QR │ │• KYC Review Queue  │ │• Redis Bid Lock   │
+│• 15-min JWT Session│ │• Offline RSA Check │ │• Fraud Alert Stream│ │• Kafka Event Bus  │
+│• Real-Time WS Bids │ │• KYC Listing Gate  │ │• Escrow Audit Trail│ │• Bid-Flusher Sync │
+│• Anti-Snipe Clocks │ │• Multi-Photo S3    │ │• Dispute Resolution│ │• Escrow-Sweep Cron│
+│• Razorpay Checkout │ │• Reserve Controls  │ │• User & Bid Banning│ │• Dynamic Pricing  │
+│• Escrow Protection │ │• Payout Tracking   │ │• System Metrics    │ │• State Machines   │
+└────────────────────┘ └────────────────────┘ └────────────────────┘ └───────────────────┘
 ```
 
 ### A. Authentication, User Management & Verification
@@ -88,40 +75,34 @@ flowchart TD
 
 ## 2. Frontend + Backend + Database Integration
 
-```mermaid
-sequenceDiagram
-    autonumber
-    actor User as User Browser
-    participant SPA as React Frontend (Vite)
-    participant GW as API Gateway (Nginx)
-    participant Auth as auth-user Service
-    participant Bid as bid Service
-    participant Redis as Upstash Redis
-    participant DB as NeonDB (PostgreSQL)
-    participant Kafka as Aiven Kafka
+### Real-Time Bidding & Auth Flow (PDF-Ready Sequence)
 
-    %% Authentication Flow
-    Note over User, DB: 1. User Authentication Flow
-    User->>SPA: Enter email & password
-    SPA->>GW: POST /api/v1/auth/login
-    GW->>Auth: Forward to auth-user (8001)
-    Auth->>DB: Query auth.users (verify hash & KYC claim)
-    DB-->>Auth: User record
-    Auth-->>GW: Issue Access JWT (15-min) + Refresh Token
-    GW-->>SPA: Store access token in memory, refresh token in cookie/session
-
-    %% Real-time Bidding Flow
-    Note over User, Kafka: 2. Real-Time Bidding Flow
-    User->>SPA: Click "Place Bid" (120.00)
-    SPA->>GW: POST /api/v1/auctions/{id}/bids (with JWT and Idempotency-Key)
-    GW->>Bid: Forward to bid service (8004)
-    Bid->>Redis: Check Idempotency and validate minimum increment
-    Bid->>Redis: Atomic conditional update of price:{auction_id}
-    Bid-->>GW: Return 201 Created (BidAccepted)
-    GW-->>SPA: Display "Bid Accepted"
-    Bid-)Kafka: Publish BidPlacedEvent to bid.events topic
-    Kafka-)GW: WS Gateway consumes event
-    GW-)SPA: Broadcast real-time bid over WebSocket (/ws)
+```text
+┌──────────────┐     ┌──────────────┐     ┌──────────────┐     ┌────────────────┐
+│ USER BROWSER │     │ API GATEWAY  │     │ MICROSERVICE │     │ DATA/EVENT BUS │
+└──────┬───────┘     └──────┬───────┘     └──────┬───────┘     └───────┬────────┘
+       │                    │                    │                     │
+       │ 1. POST /auth/login│                    │                     │
+       ├───────────────────►│ Forward to auth    │                     │
+       │                    ├───────────────────►│ Query auth.users    │
+       │                    │                    ├────────────────────►│ (NeonDB)
+       │                    │                    │◄────────────────────┤
+       │                    │◄───────────────────┤ Return User Record  │
+       │◄───────────────────┤ Return Access JWT  │                     │
+       │                    │                    │                     │
+       │ 2. POST /bids (JWT)│                    │                     │
+       ├───────────────────►│ Forward to bid     │                     │
+       │                    ├───────────────────►│ Atomic Bid Check    │
+       │                    │                    ├────────────────────►│ (Upstash Redis)
+       │                    │                    │◄────────────────────┤ Price updated
+       │                    │◄───────────────────┤ Return 201 Created  │
+       │◄───────────────────┤ Return BidAccepted │                     │
+       │                    │                    │ Publish BidPlaced   │
+       │                    │                    ├────────────────────►│ (Aiven Kafka)
+       │                    │ Consume BidPlaced  │                     │
+       │                    │◄─────────────────────────────────────────┤
+       │◄───────────────────┤ Broadcast real-time bid via WebSocket (/ws)
+       │                    │                    │                     │
 ```
 
 ### Full-Stack Architecture Tiers
@@ -141,27 +122,32 @@ sequenceDiagram
 
 ZeoAuction enforces a strict distinction between **synchronous REST** calls and **asynchronous event-driven** calls. Synchronous HTTP is used only when the caller cannot proceed without an immediate answer. All other side effects are handled asynchronously through Kafka.
 
-```mermaid
-flowchart TD
-    subgraph SynchronousRest["Synchronous REST APIs (Circuit-Broken)"]
-        CT1["CT-1: Bid -> Auction Orchestrator (GET /auctions/{id}/state)"]
-        CT2["CT-2: Auction -> KYC Gate (Reads JWT kyc_status claim directly)"]
-        CT3["CT-3: Bid -> Pricing (GET /pricing/{id}/min-increment)"]
-        CT4["CT-4: Auction -> Payment (POST /internal/orders)"]
-    end
-
-    subgraph AsynchronousKafka["Asynchronous Event Streaming (Kafka)"]
-        BidEvents["bid.events"]
-        AuctionEvents["auction.events"]
-        PaymentEvents["payment.events"]
-    end
-
-    subgraph ThirdPartyAPIs["External 3rd-Party APIs"]
-        RazorpayAPI["Razorpay Payment Gateway (Order creation and webhook capture)"]
-        GmailSMTP["Gmail SMTP / Google OAuth (Transactional OTP delivery)"]
-        SupabaseS3API["Supabase S3 Storage (Presigned URL photo upload)"]
-        UidaiCert["UIDAI Offline Certificate (2048-bit RSA signature verify)"]
-    end
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                   SYNCHRONOUS REST APIS (CIRCUIT-BROKEN)                    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ • CT-1: bid ───────────────► auction-orchestrator (GET /auctions/{id}/state) │
+│ • CT-2: auction-orchestrator► kyc (Read JWT kyc_status claim directly)      │
+│ • CT-3: bid ───────────────► pricing (GET /pricing/{id}/min-increment)      │
+│ • CT-4: auction-orchestrator► payment-escrow (POST /internal/orders)        │
+└──────────────────────────────────────┬──────────────────────────────────────┘
+                                       │
+┌──────────────────────────────────────▼──────────────────────────────────────┐
+│                    ASYNCHRONOUS EVENT STREAMING (KAFKA)                     │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ • bid.events      ──► pricing, bid-flusher, fraud-detector, ws-gateway      │
+│ • auction.events  ──► search-analytics, ws-gateway                          │
+│ • payment.events  ──► auction-orchestrator, escrow-sweep, ws-gateway        │
+└──────────────────────────────────────┬──────────────────────────────────────┘
+                                       │
+┌──────────────────────────────────────▼──────────────────────────────────────┐
+│                        EXTERNAL 3RD-PARTY SERVICE APIS                      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ • Razorpay API    ──► Checkout session creation & HMAC-SHA256 webhook capture│
+│ • Gmail SMTP      ──► 6-digit transactional OTP email delivery              │
+│ • Supabase S3 API ──► Presigned URLs for photos & KYC document storage      │
+│ • UIDAI Root PKI  ──► 2048-bit RSA offline public key signature check       │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### A. Synchronous Contract Boundaries (REST)

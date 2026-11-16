@@ -1,5 +1,12 @@
 # ZeoAuction — Deployment, Hosting & Architecture Documentation
 
+* **GitHub Repository**: [https://github.com/sagar-dot-bera/ZeoAuction](https://github.com/sagar-dot-bera/ZeoAuction)
+* **Live Web Application**: [https://zeo-auction-92pm.vercel.app](https://zeo-auction-92pm.vercel.app)
+* **Vercel Project Dashboard**: [https://vercel.com/kenji16/zeo-auction-92pm](https://vercel.com/kenji16/zeo-auction-92pm)
+* **API Gateway (Render)**: [https://zeo-api-gateway.onrender.com](https://zeo-api-gateway.onrender.com)
+
+---
+
 This document outlines the deployment architecture, hosting infrastructure, routing via the API Gateway, CI/CD pipelines, and security configurations for **ZeoAuction**.
 
 ---
@@ -8,71 +15,33 @@ This document outlines the deployment architecture, hosting infrastructure, rout
 
 ZeoAuction employs a distributed microservice architecture. The frontend Single-Page Application (SPA) never connects directly to private backend databases or internal service ports; instead, all HTTP and WebSocket requests route through a centralized **Nginx API Gateway**.
 
-### High-Level Request Flow
+### High-Level Request Flow (PDF-Ready Architecture)
 
-```mermaid
-flowchart TD
-    Client["Browser / Client"]
-    SPA["React 18 + Vite SPA (Vercel)"]
-    Gateway["Nginx API Gateway (Render zeo-api-gateway)"]
-
-    subgraph BackendServices["Backend Microservices (Render)"]
-        Auth["auth-user (Port 8001)"]
-        KYC["kyc (Port 8002)"]
-        Auction["auction-orchestrator (Port 8003)"]
-        Bid["bid (Port 8004)"]
-        Pricing["pricing (Port 8005)"]
-        Payment["payment-escrow (Port 8006)"]
-        Dispute["dispute (Port 8007)"]
-        Search["search-analytics (Port 8008)"]
-        Admin["admin-moderation (Port 8009)"]
-        WS["ws-gateway (Port 8010)"]
-        Fraud["fraud-detector (Worker)"]
-        BidFlusher["bid-flusher (Worker)"]
-        EscrowSweep["escrow-sweep (Cron)"]
-    end
-
-    subgraph DataInfra["Managed Cloud Infrastructure"]
-        NeonDB[("NeonDB PostgreSQL (SSL)")]
-        UpstashRedis[("Upstash Redis (TLS)")]
-        AivenKafka[("Aiven Kafka (SASL_SSL)")]
-        SupabaseS3[("Supabase S3 Storage")]
-    end
-
-    Client -->|"HTTPS / WSS"| SPA
-    SPA -->|"API Traffic"| Gateway
-
-    Gateway -->|"auth routes"| Auth
-    Gateway -->|"kyc routes"| KYC
-    Gateway -->|"bids routes"| Bid
-    Gateway -->|"auctions routes"| Auction
-    Gateway -->|"pricing routes"| Pricing
-    Gateway -->|"orders and fees"| Payment
-    Gateway -->|"disputes routes"| Dispute
-    Gateway -->|"search routes"| Search
-    Gateway -->|"admin routes"| Admin
-    Gateway -->|"ws connection"| WS
-
-    Auth -.-> NeonDB
-    KYC -.-> NeonDB
-    Auction -.-> NeonDB
-    Payment -.-> NeonDB
-    Dispute -.-> NeonDB
-    Search -.-> NeonDB
-    Admin -.-> NeonDB
-
-    Bid -.-> UpstashRedis
-    WS -.-> UpstashRedis
-
-    Auction -.-> AivenKafka
-    Bid -.-> AivenKafka
-    BidFlusher -.-> AivenKafka
-    Fraud -.-> AivenKafka
-    Payment -.-> AivenKafka
-
-    KYC -.-> SupabaseS3
-    Auction -.-> SupabaseS3
-    Dispute -.-> SupabaseS3
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                            USER / BROWSER CLIENT                            │
+│                     https://zeo-auction-92pm.vercel.app                     │
+└──────────────────────────────────────┬──────────────────────────────────────┘
+                                       │ HTTPS (REST) / WSS (WebSockets)
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                   CENTRALIZED API GATEWAY (Render Nginx)                    │
+│                    https://zeo-api-gateway.onrender.com                     │
+│           [SSL Termination • Request Routing • Header Normalization]        │
+└──────┬──────────┬──────────┬──────────┬──────────┬──────────┬────────┬──────┘
+       │          │          │          │          │          │        │
+┌──────▼─────┐┌───▼──────┐┌──▼───────┐┌─▼────────┐┌▼─────────┐┌▼───────┐┌▼─────┐
+│ auth-user  ││   kyc    ││auction-or││   bid    ││ pricing  ││payment ││  ws  │
+│ Port 8001  ││ Port 8002││Port 8003 ││Port 8004 ││Port 8005 ││Port8006││P.8010│
+└──────┬─────┘└───┬──────┘└──┬───────┘└──┬───────┘└──┬───────┘└──┬────┘└──┬───┘
+       │          │          │          │          │          │        │
+┌──────┴──────────┴──────────┴──────────┴──────────┴──────────┴────────┴──────┐
+│                      MANAGED CLOUD DATA INFRASTRUCTURE                       │
+│ • NeonDB PostgreSQL (Dedicated Schemas: auth, kyc, auction, bid, payment)   │
+│ • Upstash Redis (TLS / Sub-millisecond Bidding Engine & Lock Store)         │
+│ • Aiven Kafka (SASL_SSL / SCRAM-SHA-256 Topics: bid.events, auction.events) │
+│ • Supabase S3 Object Storage (Private KYC Documents & Listing Photos)       │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Gateway Route Mapping Table
@@ -100,7 +69,8 @@ The API Gateway (`infra/nginx/default.conf.template`) reverse-proxies requests a
 ## 2. Hosting Details
 
 ### A. Frontend Application (SPA)
-* **Platform**: Vercel / Cloud CDN
+* **Platform**: Vercel
+* **Live App URL**: [zeo-auction-92pm.vercel.app](https://zeo-auction-92pm.vercel.app)
 * **Framework**: React 18, Vite, TypeScript, Tailwind CSS
 * **Build Command**: `npm run build`
 * **Output Directory**: `dist`
@@ -147,7 +117,7 @@ The API Gateway (`infra/nginx/default.conf.template`) reverse-proxies requests a
 
 | Component | Target URL | Protocol | Notes |
 | :--- | :--- | :--- | :--- |
-| **Frontend Application** | `https://zeoauction.vercel.app` *(or custom domain)* | HTTPS | Public Web Application |
+| **Frontend Application** | `https://zeo-auction-92pm.vercel.app`<br/>(Project: [`vercel.com/kenji16/zeo-auction-92pm`](https://vercel.com/kenji16/zeo-auction-92pm)) | HTTPS | Public Web Application on Vercel |
 | **API Gateway** | `https://zeo-api-gateway.onrender.com` | HTTPS | Primary entry point for all REST endpoints |
 | **WebSocket Stream** | `wss://zeo-api-gateway.onrender.com/ws` | WSS | Live auction bidding and timer stream |
 | **Health Check** | `https://zeo-api-gateway.onrender.com/healthz` | HTTPS | Status code `200 OK` |
@@ -176,21 +146,40 @@ ZEO_FEATURED_AUCTIONS=00000000-0000-4000-8000-000000000201
 
 ZeoAuction uses **GitHub Actions** (`.github/workflows/ci.yml`) for end-to-end continuous integration and automated deployment verification. Every pull request and merge to `main` executes a rigorous pipeline.
 
-```mermaid
-flowchart LR
-    Lint["1. Lint (Ruff)"] --> TestLib["2. Shared Lib Tests (80% Floor)"]
-    Lint --> Contracts["3. Contract Tests (tests/contracts)"]
-    TestLib --> Services["4. Service Unit Tests (13 Services)"]
-    Services --> Images["5. Docker Build (Image validation)"]
-    Services --> E2E["6. End-to-End Tests (tests/e2e)"]
-    Services --> Compose["7. Compose Check (docker-compose config)"]
-    Lint --> Frontend["8. Frontend CI (Lint + Types + Tests)"]
-    
-    Images --> Gate["Gate Check (Branch Protection)"]
-    E2E --> Gate
-    Compose --> Gate
-    Frontend --> Gate
-    Gate --> Deploy["Automatic Deploy (Render and Vercel)"]
+### Pipeline Architecture (PDF-Ready Flowchart)
+
+```text
+┌─────────────────┐     ┌──────────────────────┐     ┌──────────────────────┐
+│  1. Linting     ├────►│  2. Shared Lib Tests ├────►│  4. Service Matrix   │
+│  (Ruff Check)   │     │  (80% Coverage Floor)│     │  (13 Services x 80%) │
+└────────┬────────┘     └──────────────────────┘     └──────────┬───────────┘
+         │                                                      │
+         ├──────────────► 3. Contract Tests (tests/contracts)   │
+         │                                                      │
+         ▼                                                      ▼
+┌─────────────────┐     ┌──────────────────────┐     ┌──────────────────────┐
+│  8. Frontend CI │     │  7. Compose Check    │◄────┤  5. Docker Build     │
+│  (Lint/Types/   │     │  (docker-compose.yml)│     │  (Image validation)  │
+│   Tests/Build)  │     └──────────┬───────────┘     └──────────┬───────────┘
+└────────┬────────┘                │                            │
+         │                         ▼                            │
+         │              ┌──────────────────────┐                │
+         └─────────────►│  6. End-to-End Tests │◄───────────────┘
+                        │  (Full System Suite) │
+                        └──────────┬───────────┘
+                                   │
+                                   ▼
+                        ┌──────────────────────┐
+                        │  9. GATE STATUS CHECK│ (Required Branch Protection)
+                        │  (All Stages Passed) │
+                        └──────────┬───────────┘
+                                   │ Merge to main
+                                   ▼
+                        ┌──────────────────────┐
+                        │ 10. AUTO DEPLOYMENT  │
+                        │ • Vercel (Frontend)  │
+                        │ • Render (Backend+GW)│
+                        └──────────────────────┘
 ```
 
 ### Pipeline Stages
@@ -243,8 +232,11 @@ flowchart LR
 - **Test Mode Key Guard**: Payment adapters reject non-test keys in development/staging environments (`rzp_test_` validation).
 - **Idempotency Keys**: All financial transactions and bid submissions enforce `Idempotency-Key` headers to prevent double-charging or duplicate bids during network retries.
 
-### F. CORS & Headers
-- Gateway and FastAPI services enforce CORS origins via `CORS_ALLOW_ORIGINS`, restricting API consumption to verified frontend domains (`http://localhost:5173`, `https://zeoauction.vercel.app`).
+### F. CORS & Gateway Perimeter Security
+- **Centralized Gateway CORS**: Handled directly at the Nginx API Gateway level (`infra/nginx/proxy_params` and `infra/nginx/default.conf.template`).
+- **Dynamic Origin Matching**: Dynamically allows verified origins (Vercel deployments `https://*.vercel.app`, Render services `https://*.onrender.com`, and local development `http://localhost:*` / `http://127.0.0.1:*`).
+- **Instant Preflight Resolution**: Preflight `OPTIONS` requests are resolved directly at the gateway with `204 No Content` and cached for 24 hours (`Access-Control-Max-Age: 86400`), reducing backend latency.
+- **Upstream Conflict Protection**: Uses `proxy_hide_header` to strip any conflicting upstream CORS headers from backend services before emitting the gateway's verified headers.
 - Security headers configured in Nginx proxy:
   ```nginx
   proxy_set_header Host $host;
