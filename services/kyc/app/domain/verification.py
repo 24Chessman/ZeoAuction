@@ -1,9 +1,7 @@
 """Seller verification state machine (docs/state-machines.md section 3).
 
-Pure logic, no I/O. A submission starts when a seller's Aadhaar Secure QR verifies
-(K1), then the live face check runs: a match, clear (K3a) or borderline (K2), puts the
-submission in the administrator queue, and the last failed attempt rejects it (K4a). Only an
-administrator verifies a seller (K3).
+Pure logic, no I/O. A submission starts when a seller's Aadhaar Secure QR verifies (K1) and
+immediately enters the administrator queue. Only an administrator verifies a seller (K3).
 Re-uploading the QR before any counted face attempt withdraws the waiting row (K4b).
 
 Every accepted transition is recorded in ``kyc_state_transitions`` with its actor, mirrored to
@@ -26,7 +24,7 @@ STATES = ("SUBMITTED", "UNDER_REVIEW", "VERIFIED", "REJECTED", "SUSPENDED")
 # event -> (from_state, to_state). "submit" creates a row, so it has no from-state; K5
 # (resubmit after REJECTED) is a "submit" of a new row, the old row is kept for audit.
 TRANSITIONS: dict[str, tuple[str | None, str]] = {
-    "submit": (None, "SUBMITTED"),                # K1, K5: Secure QR verified
+    "submit": (None, "UNDER_REVIEW"),             # K1, K5: Secure QR verified
     "faceReview": ("SUBMITTED", "UNDER_REVIEW"),  # K2: borderline face match
     "faceMatch": ("SUBMITTED", "UNDER_REVIEW"),   # K3a: clear face match, still needs an admin
     "faceFail": ("SUBMITTED", "REJECTED"),        # K4a: last face attempt failed
@@ -139,5 +137,9 @@ def submit_transition(submission: Submission, now: datetime,
     reason = None if previous is None else f"resubmission after {previous.id}"
     return Transition(
         submission_id=submission.id, user_id=submission.user_id, event="submit",
-        from_state=None, to_state="SUBMITTED", actor_id=submission.user_id, reason=reason, at=now,
+        from_state=None,
+        to_state="UNDER_REVIEW",
+        actor_id=submission.user_id,
+        reason=reason,
+        at=now,
     )

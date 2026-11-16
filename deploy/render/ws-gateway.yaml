@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: zeo-ws-gateway
+    runtime: docker
+    dockerfilePath: services/ws-gateway/Dockerfile
+    dockerContext: .
+    plan: free
+    region: singapore
+    healthCheckPath: /healthz
+    envVars:
+      - key: REDIS_URL
+        sync: false
+      - key: KAFKA_BOOTSTRAP_SERVERS
+        sync: false
+      - key: KAFKA_SECURITY_PROTOCOL
+        value: SASL_SSL
+      - key: KAFKA_SASL_MECHANISM
+        value: SCRAM-SHA-256
+      - key: KAFKA_SASL_USERNAME
+        sync: false
+      - key: KAFKA_SASL_PASSWORD
+        sync: false
+      - key: WS_CONSUME_EVENTS
+        value: "true"
+      - key: WS_USE_REDIS
+        value: "true"
+      - key: WS_CONSUMER_GROUP
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: CORS_ALLOW_ORIGINS
+        sync: false

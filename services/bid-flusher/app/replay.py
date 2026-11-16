@@ -116,12 +116,15 @@ class KafkaEventSource:
 
     async def events(self) -> AsyncIterator[dict[str, Any]]:  # pragma: no cover - needs a broker
         from aiokafka import AIOKafkaConsumer, TopicPartition
+        from zeo_common import KafkaSettings
 
+        kafka_kwargs = KafkaSettings.from_env().consumer_kwargs()
         consumer = AIOKafkaConsumer(
             bootstrap_servers=self.bootstrap_servers,
             group_id=None,
             enable_auto_commit=False,
             auto_offset_reset="earliest",
+            **kafka_kwargs,
         )
         await consumer.start()
         try:

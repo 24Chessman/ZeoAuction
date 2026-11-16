@@ -14,12 +14,12 @@ from decimal import Decimal
 from typing import Any
 
 _INSERT_ALERT = (
-    "INSERT INTO fraud_alerts (alert_id, auction_id, ring_id, score, signals, raised_at, "
+    "INSERT INTO fraud.fraud_alerts (alert_id, auction_id, ring_id, score, signals, raised_at, "
     "auction_closes_at) VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7) "
     "ON CONFLICT (alert_id) DO NOTHING"
 )
 _INSERT_RUN = (
-    "INSERT INTO evaluation_runs (dataset_version, detector_version, threshold, recall, "
+    "INSERT INTO fraud.evaluation_runs (dataset_version, detector_version, threshold, recall, "
     "precision, late_alerts) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id"
 )
 

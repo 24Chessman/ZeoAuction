@@ -53,7 +53,7 @@ async def test_add_inserts_the_row_and_a_create_transition():
     auction = draft()
     await PostgresAuctionRepository(pool).add(auction)
     assert pool.log[0] == "BEGIN"
-    assert pool.log[1][0].startswith("INSERT INTO auctions")
+    assert pool.log[1][0].startswith("INSERT INTO auction.auctions")
     assert len(pool.log[1][1]) == 26
     assert pool.log[2][1][1:5] == ("create", None, "DRAFT", SELLER)
     assert pool.log[-1] == "COMMIT"

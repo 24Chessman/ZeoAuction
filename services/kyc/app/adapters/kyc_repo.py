@@ -1,7 +1,7 @@
 """KYC persistence (role ``kyc_svc``): PostgreSQL for real, in-memory for tests.
 
 Each accepted transition is one transaction (docs/state-machines.md section 3):
-1. ``UPDATE kyc_submissions ... WHERE id = $1 AND state = $from``; 0 rows means someone else
+1. ``UPDATE kyc.kyc_submissions ... WHERE id = $1 AND state = $from``; 0 rows means someone else
    won the race (:class:`StaleSubmission`);
 2. a row in the append-only ``kyc_state_transitions``;
 3. the ``auth.users`` mirror with a ``token_version`` bump;
@@ -18,8 +18,7 @@ from uuid import UUID
 
 from app.adapters.user_mirror import InMemoryUserMirror, mirror_status
 from app.domain.aadhaar import AadhaarSummary
-from app.domain.face import FaceAttempt
-from app.domain.submission import Document, Submission
+from app.domain.submission import Document, FaceAttempt, Submission
 from app.domain.verification import DOC_VIEW_ACTION, Transition
 
 SERVICE = "kyc"
@@ -205,7 +204,8 @@ class InMemoryKycRepository:
 
 
 _INSERT_TRANSITION = (
-    "INSERT INTO kyc_state_transitions (submission_id, from_state, to_state, actor_id, reason, at) "
+    "INSERT INTO kyc.kyc_state_transitions "
+    "(submission_id, from_state, to_state, actor_id, reason, at) "
     "VALUES ($1, $2, $3, $4, $5, $6)"
 )
 _INSERT_AUDIT = (
@@ -214,19 +214,19 @@ _INSERT_AUDIT = (
     "VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9, $10, $11, $12)"
 )
 _INSERT_DOCUMENT = (
-    f"INSERT INTO kyc_documents ({_DOCUMENT_COLUMNS}) "  # noqa: S608 - constant column list
+    f"INSERT INTO kyc.kyc_documents ({_DOCUMENT_COLUMNS}) "  # noqa: S608 - constant column list
     "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)"
 )
 _INSERT_AADHAAR = (
-    f"INSERT INTO aadhaar_verifications ({_AADHAAR_COLUMNS}) "  # noqa: S608 - constant
+    f"INSERT INTO kyc.aadhaar_verifications ({_AADHAAR_COLUMNS}) "  # noqa: S608 - constant
     "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)"
 )
 _INSERT_ATTEMPT = (
-    f"INSERT INTO face_match_attempts ({_ATTEMPT_COLUMNS}) "  # noqa: S608 - constant
+    f"INSERT INTO kyc.face_match_attempts ({_ATTEMPT_COLUMNS}) "  # noqa: S608 - constant
     "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)"
 )
 _UPDATE_STATE = (
-    "UPDATE kyc_submissions SET state = $1, rejection_reason = $2, decided_at = $3, "
+    "UPDATE kyc.kyc_submissions SET state = $1, rejection_reason = $2, decided_at = $3, "
     "decided_by = $4 WHERE id = $5 AND state = $6"
 )
 
@@ -259,7 +259,7 @@ class PostgresKycRepository:
     async def latest_for_user(self, user_id: UUID) -> Submission | None:
         async with self.pool.acquire() as connection:
             row = await connection.fetchrow(
-                f"SELECT {_SUBMISSION_COLUMNS} FROM kyc_submissions "  # noqa: S608 - constant
+                f"SELECT {_SUBMISSION_COLUMNS} FROM kyc.kyc_submissions "  # noqa: S608 - constant
                 "WHERE user_id = $1 ORDER BY submitted_at DESC LIMIT 1",
                 user_id,
             )
@@ -268,7 +268,7 @@ class PostgresKycRepository:
     async def get(self, submission_id: UUID) -> Submission | None:
         async with self.pool.acquire() as connection:
             row = await connection.fetchrow(
-                f"SELECT {_SUBMISSION_COLUMNS} FROM kyc_submissions "  # noqa: S608 - constant
+                f"SELECT {_SUBMISSION_COLUMNS} FROM kyc.kyc_submissions "  # noqa: S608 - constant
                 "WHERE id = $1",
                 submission_id,
             )
@@ -277,7 +277,7 @@ class PostgresKycRepository:
     async def documents(self, submission_id: UUID) -> list[Document]:
         async with self.pool.acquire() as connection:
             rows = await connection.fetch(
-                f"SELECT {_DOCUMENT_COLUMNS} FROM kyc_documents "  # noqa: S608 - constant
+                f"SELECT {_DOCUMENT_COLUMNS} FROM kyc.kyc_documents "  # noqa: S608 - constant
                 "WHERE submission_id = $1 ORDER BY uploaded_at, doc_type",
                 submission_id,
             )
@@ -286,7 +286,7 @@ class PostgresKycRepository:
     async def aadhaar(self, submission_id: UUID) -> AadhaarSummary | None:
         async with self.pool.acquire() as connection:
             row = await connection.fetchrow(
-                f"SELECT {_AADHAAR_COLUMNS} FROM aadhaar_verifications "  # noqa: S608
+                f"SELECT {_AADHAAR_COLUMNS} FROM kyc.aadhaar_verifications "  # noqa: S608
                 "WHERE submission_id = $1",
                 submission_id,
             )
@@ -295,7 +295,7 @@ class PostgresKycRepository:
     async def face_attempts(self, submission_id: UUID) -> list[FaceAttempt]:
         async with self.pool.acquire() as connection:
             rows = await connection.fetch(
-                f"SELECT {_ATTEMPT_COLUMNS} FROM face_match_attempts "  # noqa: S608
+                f"SELECT {_ATTEMPT_COLUMNS} FROM kyc.face_match_attempts "  # noqa: S608
                 "WHERE submission_id = $1 ORDER BY attempt_no",
                 submission_id,
             )
@@ -310,7 +310,7 @@ class PostgresKycRepository:
         try:
             async with self.pool.acquire() as connection, connection.transaction():
                 await connection.execute(
-                    f"INSERT INTO kyc_submissions ({_SUBMISSION_COLUMNS}) "  # noqa: S608
+                    f"INSERT INTO kyc.kyc_submissions ({_SUBMISSION_COLUMNS}) "  # noqa: S608
                     "VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
                     submission.id, submission.user_id, submission.state,
                     submission.rejection_reason, submission.submitted_at, submission.decided_at,
@@ -368,7 +368,7 @@ class PostgresKycRepository:
     async def queue(self, states: tuple[str, ...], limit: int, offset: int) -> list[Submission]:
         async with self.pool.acquire() as connection:
             rows = await connection.fetch(
-                f"SELECT {_SUBMISSION_COLUMNS} FROM kyc_submissions "  # noqa: S608 - constant
+                f"SELECT {_SUBMISSION_COLUMNS} FROM kyc.kyc_submissions "  # noqa: S608 - constant
                 "WHERE state = ANY($1::text[]) ORDER BY submitted_at, id LIMIT $2 OFFSET $3",
                 list(states), limit, offset,
             )

@@ -7,12 +7,14 @@ uniform error envelope (SDD section 7.1.1).
 
 from zeo_common.app_factory import create_app
 from zeo_common.errors import ApiError, ErrorBody
+from zeo_common.kafka_settings import KafkaSettings
 from zeo_common.money import MoneyError, format_money, parse_money
 from zeo_common.request_context import get_request_id
 
 __all__ = [
     "ApiError",
     "ErrorBody",
+    "KafkaSettings",
     "MoneyError",
     "create_app",
     "format_money",

@@ -56,9 +56,12 @@ class PaymentEventsConsumer:
 
     @classmethod
     def connect(cls, bootstrap_servers: str, handler: Handler,
-                group_id: str = CONSUMER_GROUP) -> "PaymentEventsConsumer":  # pragma: no cover
+                group_id: str = CONSUMER_GROUP, **kwargs: Any) -> "PaymentEventsConsumer":  # pragma: no cover
         from aiokafka import AIOKafkaConsumer
+        from zeo_common import KafkaSettings
 
+        kafka_kwargs = KafkaSettings.from_env().consumer_kwargs()
+        kafka_kwargs.update(kwargs)
         consumer = AIOKafkaConsumer(
             PAYMENT_EVENTS_TOPIC,
             bootstrap_servers=bootstrap_servers,
@@ -66,6 +69,7 @@ class PaymentEventsConsumer:
             client_id="auction-orchestrator",
             enable_auto_commit=False,
             auto_offset_reset="earliest",
+            **kafka_kwargs,
         )
         return cls(consumer, handler)
 

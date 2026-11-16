@@ -13,15 +13,15 @@ import pytest
 from app.adapters.kyc_repo import ActiveSubmissionExists, PostgresKycRepository, StaleSubmission
 from app.adapters.user_mirror import UnknownUser
 from app.domain.aadhaar import AadhaarSummary
-from app.domain.face import FaceAttempt
-from app.domain.submission import Submission, new_document, validate_image
+from app.domain.submission import FaceAttempt, Submission, new_document, validate_image
 from app.domain.verification import plan_transition, submit_transition
 from tests.support import JPEG
 
 NOW = datetime(2026, 9, 10, tzinfo=UTC)
 MIRROR = ("UPDATE auth.users SET kyc_status = $1, kyc_status_updated_at = $2, token_version = "
           "token_version + 1 WHERE id = $3 RETURNING token_version")
-UPDATE_STATE = ("UPDATE kyc_submissions SET state = $1, rejection_reason = $2, decided_at = $3, "
+UPDATE_STATE = ("UPDATE kyc.kyc_submissions SET state = $1, rejection_reason = $2, "
+                "decided_at = $3, "
                 "decided_by = $4 WHERE id = $5 AND state = $6")
 
 
@@ -112,10 +112,10 @@ async def test_create_writes_row_photo_summary_transition_and_mirror_in_one_tran
     assert version == 2
     assert pool.statements() == [
         "BEGIN",
-        "INSERT INTO kyc_submissions",
-        "INSERT INTO kyc_documents",
-        "INSERT INTO aadhaar_verifications",
-        "INSERT INTO kyc_state_transitions",
+        "INSERT INTO kyc.kyc_submissions",
+        "INSERT INTO kyc.kyc_documents",
+        "INSERT INTO kyc.aadhaar_verifications",
+        "INSERT INTO kyc.kyc_state_transitions",
         MIRROR,
         "COMMIT",
     ]
@@ -126,7 +126,7 @@ async def test_create_maps_the_one_live_submission_index_to_a_domain_error():
     import asyncpg
 
     pool = FakePool()
-    pool.raise_on = "INSERT INTO kyc_submissions"
+    pool.raise_on = "INSERT INTO kyc.kyc_submissions"
     pool.error = asyncpg.UniqueViolationError("kyc_submissions_one_live_per_user")
     row = submission()
     with pytest.raises(ActiveSubmissionExists):
@@ -156,10 +156,10 @@ async def test_a_deciding_face_attempt_is_one_transaction_with_its_transition():
     assert version == 3
     assert pool.statements() == [
         "BEGIN",
-        "INSERT INTO face_match_attempts",
-        "INSERT INTO kyc_documents",
+        "INSERT INTO kyc.face_match_attempts",
+        "INSERT INTO kyc.kyc_documents",
         UPDATE_STATE,
-        "INSERT INTO kyc_state_transitions",
+        "INSERT INTO kyc.kyc_state_transitions",
         MIRROR,
         "COMMIT",
     ]
@@ -171,14 +171,14 @@ async def test_a_non_deciding_attempt_only_appends_the_attempt():
     assert await PostgresKycRepository(pool).record_face_attempt(
         attempt_for(row, "NO_FACE"), [], None
     ) is None
-    assert pool.statements() == ["BEGIN", "INSERT INTO face_match_attempts", "COMMIT"]
+    assert pool.statements() == ["BEGIN", "INSERT INTO kyc.face_match_attempts", "COMMIT"]
 
 
 async def test_a_concurrent_attempt_number_is_a_stale_submission():
     import asyncpg
 
     pool = FakePool()
-    pool.raise_on = "INSERT INTO face_match_attempts"
+    pool.raise_on = "INSERT INTO kyc.face_match_attempts"
     pool.error = asyncpg.UniqueViolationError("face_match_attempts_submission_id_attempt_no_key")
     with pytest.raises(StaleSubmission):
         await PostgresKycRepository(pool).record_face_attempt(attempt_for(submission()), [], None)
@@ -208,7 +208,7 @@ async def test_admin_transition_updates_with_a_state_check_and_audits():
     assert update[0].endswith("WHERE id = $5 AND state = $6")
     assert update[1][-1] == "UNDER_REVIEW"
     statements = pool.statements()
-    assert statements[2] == "INSERT INTO kyc_state_transitions"
+    assert statements[2] == "INSERT INTO kyc.kyc_state_transitions"
     assert statements[3] == "INSERT INTO admin.audit_log"
     assert statements[-1] == "COMMIT"
 
@@ -222,7 +222,7 @@ async def test_a_lost_race_rolls_back_without_writing_anything_else():
     with pytest.raises(StaleSubmission):
         await PostgresKycRepository(pool).apply(transition, updated, "USER", None)
     assert pool.statements()[-1] == "ROLLBACK"
-    assert "INSERT INTO kyc_state_transitions" not in pool.statements()
+    assert "INSERT INTO kyc.kyc_state_transitions" not in pool.statements()
 
 
 async def test_reads():

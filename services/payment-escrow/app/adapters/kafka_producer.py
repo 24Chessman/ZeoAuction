@@ -79,15 +79,19 @@ class KafkaSettlementEventPublisher:
         self.topic = topic
 
     @classmethod
-    def connect(cls, bootstrap_servers: str) -> "KafkaSettlementEventPublisher":
+    def connect(cls, bootstrap_servers: str, **kwargs: Any) -> "KafkaSettlementEventPublisher":
         from aiokafka import AIOKafkaProducer
+        from zeo_common import KafkaSettings
 
+        kafka_kwargs = KafkaSettings.from_env().producer_kwargs()
+        kafka_kwargs.update(kwargs)
         producer = AIOKafkaProducer(
             bootstrap_servers=bootstrap_servers,
             client_id="payment-escrow",
             acks="all",
             enable_idempotence=True,
             request_timeout_ms=5000,
+            **kafka_kwargs,
         )
         return cls(producer)
 

@@ -37,7 +37,7 @@ class FakePool:
 
     async def execute(self, sql, *args):
         self.log.append((sql, args))
-        return self.status if sql.startswith("UPDATE orders") else "INSERT 0 1"
+        return self.status if sql.startswith("UPDATE payment.orders") else "INSERT 0 1"
 
     async def fetchrow(self, sql, *args):
         self.log.append((sql, args))
@@ -81,7 +81,7 @@ async def test_create_order_inserts_order_and_invoice_in_one_transaction():
     assert pool.log[0] == "BEGIN" and pool.log[-1] == "COMMIT"
     insert_order, insert_invoice = pool.statements()
     assert "ON CONFLICT (auction_id) DO NOTHING" in insert_order
-    assert insert_invoice.startswith("INSERT INTO invoices")
+    assert insert_invoice.startswith("INSERT INTO payment.invoices")
 
 
 async def test_create_order_returns_the_existing_order_on_conflict():
@@ -90,7 +90,7 @@ async def test_create_order_returns_the_existing_order_on_conflict():
     saved, created = await PostgresPaymentRepository(pool).create_order(
         order(), issue_invoice(existing, invoice_id=uuid4()))
     assert not created and saved == existing
-    assert not any(s.startswith("INSERT INTO invoices") for s in pool.statements())
+    assert not any(s.startswith("INSERT INTO payment.invoices") for s in pool.statements())
 
 
 async def test_lookups_round_trip_rows():
@@ -113,11 +113,11 @@ async def test_save_checks_the_version_and_appends_ledger_rows_atomically():
     await PostgresPaymentRepository(pool).save(authorized, captured,
                                                entries=[capture_entry(captured, "pay_1")])
     statements = pool.statements()
-    assert statements[0].startswith("SELECT") and "FROM escrow_ledger" in statements[0]
+    assert statements[0].startswith("SELECT") and "FROM payment.escrow_ledger" in statements[0]
     update = next(entry for entry in pool.log if isinstance(entry, tuple)
-                  and entry[0].startswith("UPDATE orders"))
+                  and entry[0].startswith("UPDATE payment.orders"))
     assert update[1][-2:] == (authorized.id, authorized.version)
-    assert statements[2].startswith("INSERT INTO escrow_ledger")
+    assert statements[2].startswith("INSERT INTO payment.escrow_ledger")
     assert pool.log[-1] == "COMMIT"
 
 
@@ -126,8 +126,8 @@ async def test_save_without_entries_skips_the_ledger_and_can_void_the_invoice():
     o = order()
     await PostgresPaymentRepository(pool).save(o, machine.cancel(o, NOW), void_invoice_at=NOW)
     statements = pool.statements()
-    assert statements[0].startswith("UPDATE orders")
-    assert statements[1].startswith("UPDATE invoices SET voided_at")
+    assert statements[0].startswith("UPDATE payment.orders")
+    assert statements[1].startswith("UPDATE payment.invoices SET voided_at")
 
 
 async def test_a_lost_race_rolls_back():

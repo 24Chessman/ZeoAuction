@@ -1,4 +1,4 @@
-# KYC error codes: Aadhaar Secure QR and the live face check (ADR-0013).
+# KYC error codes: Aadhaar Secure QR verification (ADR-0013).
 # Owner: Sagar. Delivered in the uniform error envelope {code, message, details, request_id}.
 # Platform-wide codes (FORBIDDEN, NOT_FOUND, CONFLICT, VALIDATION_ERROR, ...) live in
 # common-error-codes.yaml.
@@ -9,19 +9,19 @@
 # retryable  true = retry the same request later; false = refused again until something changes.
 # services/kyc/tests/test_error_codes.py checks the service raises only these codes (plus the
 # common ones).
-# 2.0.0 (2026-10-20): AADHAAR_INVALID reasons for the Secure QR replace the offline XML ones.
-version: "2.0.0"
+# 2.1.0 (2026-11-15): Aadhaar QR submissions go directly to administrator review.
+version: "2.1.0"
 codes:
   - code: KYC_ALREADY_ACTIVE
     http: 409
     retryable: false
     details: [state]
-    condition: "A verification is under review, approved or suspended, or the face check already has a counted attempt, so a new Aadhaar upload is refused."
+    condition: "A verification is under review, approved or suspended, so a new Aadhaar upload is refused."
   - code: KYC_COOLDOWN
     http: 409
     retryable: true
     details: [retry_after]
-    condition: "The last submission was rejected by the face check after the maximum attempts; a new upload is accepted from retry_after (ISO 8601, UTC)."
+    condition: "Reserved for deployments that configure a retry cooldown after rejection."
   - code: AADHAAR_INVALID
     http: 422
     retryable: false
@@ -39,9 +39,3 @@ codes:
       - underage           # sellers must be 18 or older
       - mobile_mismatch    # the optional mobile number does not match the QR (field = mobile)
     condition: "The photographed Aadhaar Secure QR failed verification (field = qr_image unless noted). Nothing was stored."
-  - code: FACE_CAPTURE_INVALID
-    http: 422
-    retryable: false
-    details: [reason, field]
-    reasons: [frame_count, empty, too_large, unsupported_format]
-    condition: "The face-check request itself is unusable (wrong number of frames, or a frame that is not a JPEG/PNG within the size limit). Not counted as an attempt."

@@ -1,5 +1,6 @@
 # Service-specific runtime dependencies. zeo-common is installed separately.
 aiokafka>=0.11
 httpx>=0.27
+uvicorn[standard]>=0.30
 # Listing photo uploads (multipart).
 python-multipart>=0.0.9

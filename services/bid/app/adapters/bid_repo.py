@@ -67,7 +67,7 @@ class PostgresBidRepository:
     async def _one(self, where: str, value: Any) -> StoredBid | None:
         async with self.pool.acquire() as connection:
             row = await connection.fetchrow(
-                f"SELECT {_COLUMNS} FROM bids WHERE {where} = $1",  # noqa: S608 - constant SQL
+                f"SELECT {_COLUMNS} FROM bid.bids WHERE {where} = $1",  # noqa: S608 - constant SQL
                 value,
             )
         return None if row is None else StoredBid(**dict(row))
@@ -83,10 +83,10 @@ class PostgresBidRepository:
     ) -> tuple[list[StoredBid], int]:
         async with self.pool.acquire() as connection:
             total = await connection.fetchval(
-                "SELECT count(*) FROM bids WHERE auction_id = $1", auction_id
+                "SELECT count(*) FROM bid.bids WHERE auction_id = $1", auction_id
             )
             rows = await connection.fetch(
-                f"SELECT {_COLUMNS} FROM bids WHERE auction_id = $1 "  # noqa: S608
+                f"SELECT {_COLUMNS} FROM bid.bids WHERE auction_id = $1 "  # noqa: S608
                 "ORDER BY server_seq DESC LIMIT $2 OFFSET $3",
                 auction_id, page_size, (page - 1) * page_size,
             )

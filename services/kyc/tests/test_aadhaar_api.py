@@ -1,22 +1,22 @@
 from datetime import UTC, datetime, timedelta
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 from scripts.synthetic_qr import Holder
-from tests.support import JPEG, bearer, qr_image, readings
+from tests.support import JPEG, bearer, qr_image
 from zeo_common.contract_testing import assert_matches_contract
 
 
-def test_a_verified_aadhaar_creates_a_submission_waiting_for_the_face(harness):
+def test_a_verified_aadhaar_creates_a_submission_for_admin_review(harness):
     user = uuid4()
     response = harness.upload(user, mobile="9876543210")
     assert response.status_code == 201, response.text
     body = response.json()
-    assert body["state"] == "SUBMITTED"
+    assert body["state"] == "UNDER_REVIEW"
     assert body["aadhaar"]["holder_name"] == "Asha Verma"
     assert body["aadhaar"]["reference_last4"] == "3632"
     assert body["aadhaar"]["mobile_verified"] is True
-    assert body["face"] == {"attempts_used": 0, "attempts_left": 3, "last_outcome": None}
-    assert body["can_resubmit"] is True  # no counted face attempt yet: may replace the QR
+    assert body["face"] == {"attempts_used": 0, "attempts_left": 0, "last_outcome": None}
+    assert body["can_resubmit"] is False
     assert [d["doc_type"] for d in body["documents"]] == ["AADHAAR_PHOTO"]
     assert "url" not in str(body).lower()
 
@@ -26,7 +26,7 @@ def test_nothing_identifying_beyond_the_summary_is_kept_or_returned(harness):
     body = harness.upload(user, mobile="9876543210").json()
     assert "pincode" not in body["aadhaar"]  # sellers see less than reviewers
     (summary,) = harness.repo.aadhaar_rows.values()
-    assert summary.reference_embedding == (1.0, 0.0, 0.0)
+    assert summary.reference_embedding is None
     kept = repr(summary) + repr(list(harness.store.objects))
     for secret in ("9876543210", "Maharashtra Pune", "FC Road"):
         assert secret not in kept
@@ -38,11 +38,11 @@ def test_nothing_identifying_beyond_the_summary_is_kept_or_returned(harness):
 def test_upload_mirrors_the_status_and_forces_a_token_refresh(harness):
     user = uuid4()
     harness.upload(user)
-    assert harness.repo.mirror.users[user] == ("SUBMITTED", 2)
+    assert harness.repo.mirror.users[user] == ("UNDER_REVIEW", 2)
     assert harness.versions.versions[user] == 2
     (transition,) = harness.repo.transitions
     assert (transition.event, transition.to_state, transition.actor_id) == (
-        "submit", "SUBMITTED", user)
+        "submit", "UNDER_REVIEW", user)
 
 
 def test_an_invalid_qr_names_the_reason_and_the_field(harness):
@@ -74,13 +74,6 @@ def test_photos_without_a_qr_or_that_are_not_images_are_refused(harness):
     assert harness.upload(uuid4(), JPEG).json()["details"]["reason"] == "not_image"
 
 
-def test_an_undecodable_photo_is_refused(harness):
-    harness.engine.decodable = False
-    response = harness.upload(uuid4())
-    assert response.status_code == 422
-    assert response.json()["details"]["reason"] == "no_photo"
-
-
 def test_uploads_require_a_token_and_an_image(harness):
     files = {"qr_image": ("qr.png", qr_image(), "image/png")}
     assert harness.client.post("/api/v1/kyc/aadhaar", files=files).status_code == 401
@@ -90,31 +83,8 @@ def test_uploads_require_a_token_and_an_image(harness):
     assert response.json()["code"] == "VALIDATION_ERROR"
 
 
-def test_re_uploading_before_any_face_attempt_withdraws_the_waiting_row(harness):
-    user, first = harness.submitted()
-    second = harness.upload(user)
-    assert second.status_code == 201
-    assert second.json()["submission_id"] != first
-    old = harness.repo.submissions[UUID(first)]
-    assert (old.state, old.rejection_reason) == (
-        "REJECTED", "Replaced by a new Aadhaar QR upload")
-    assert [t.event for t in harness.repo.transitions] == ["submit", "withdraw", "submit"]
-
-
-def test_a_counted_face_attempt_locks_the_qr(harness):
-    user, submission_id = harness.submitted()
-    harness.engine.next_readings = readings(0.1, 0.1, 0.1)
-    assert harness.face(user, submission_id).json()["outcome"] == "NO_MATCH"
-    response = harness.upload(user)
-    assert response.status_code == 409
-    assert response.json()["code"] == "KYC_ALREADY_ACTIVE"
-    assert response.json()["details"] == {"state": "SUBMITTED"}
-    assert harness.me(user).json()["can_resubmit"] is False
-
-
 def test_a_verified_seller_cannot_upload_again(harness):
     user, submission_id = harness.submitted()
-    assert harness.face(user, submission_id).json()["outcome"] == "MATCH"
     harness.admin_post(f"{submission_id}/approve")
     response = harness.upload(user)
     assert response.status_code == 409

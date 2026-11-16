@@ -185,7 +185,8 @@ async def test_saga_steps_are_upserted_in_the_order_transaction():
     await PostgresPaymentRepository(pool).create_order(
         o, issue_invoice(o, invoice_id=uuid4()), steps=[record])
     upsert = pool.statements()[-1]
-    assert upsert.startswith("INSERT INTO saga_steps") and "ON CONFLICT (saga_id, step)" in upsert
+    assert upsert.startswith("INSERT INTO payment.saga_steps")
+    assert "ON CONFLICT (saga_id, step)" in upsert
     assert "attempts = saga_steps.attempts + 1" in upsert
     assert pool.log[-2][1] == (o.saga_id, "S1", o.id, "DONE", record.idempotency_key, None,
                                o.created_at)
@@ -196,7 +197,7 @@ async def test_saga_steps_are_upserted_in_the_order_transaction():
     await PostgresPaymentRepository(pool).save(
         o, cancelled, void_invoice_at=NOW,
         steps=[step_record(o, Step.S1, StepStatus.COMPENSATED, "unpaid")])
-    assert pool.statements()[-1].startswith("INSERT INTO saga_steps")
+    assert pool.statements()[-1].startswith("INSERT INTO payment.saga_steps")
     assert pool.log[-2][1][3:7] == ("COMPENSATED", f"order:{o.id}:saga-invoice", "unpaid",
                                     cancelled.updated_at)
 

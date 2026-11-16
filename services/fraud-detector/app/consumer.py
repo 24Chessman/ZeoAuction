@@ -104,7 +104,9 @@ class FraudConsumer:
     @classmethod
     def connect(cls, bootstrap_servers: str, **kwargs: Any) -> "FraudConsumer":  # pragma: no cover
         from aiokafka import AIOKafkaConsumer
+        from zeo_common import KafkaSettings
 
+        kafka_kwargs = KafkaSettings.from_env().consumer_kwargs()
         consumer = AIOKafkaConsumer(
             BID_EVENTS_TOPIC,
             bootstrap_servers=bootstrap_servers,
@@ -114,6 +116,7 @@ class FraudConsumer:
             # A new group reads the whole retained topic (7 days): the dataset replay and
             # every still-open auction's history.
             auto_offset_reset="earliest",
+            **kafka_kwargs,
         )
         return cls(consumer, **kwargs)
 

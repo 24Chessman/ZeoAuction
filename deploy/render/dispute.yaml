@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: zeo-dispute
+    runtime: docker
+    dockerfilePath: services/dispute/Dockerfile
+    dockerContext: .
+    plan: free
+    region: singapore
+    healthCheckPath: /healthz
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: PAYMENT_SERVICE_URL
+        sync: false
+      - key: S3_ENDPOINT_URL
+        sync: false
+      - key: S3_ACCESS_KEY
+        sync: false
+      - key: S3_SECRET_KEY
+        sync: false
+      - key: S3_BUCKET
+        value: dispute-evidence
+      - key: DISPUTE_REPOSITORY
+        value: postgres
+      - key: INTERNAL_SERVICE_TOKEN
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: CORS_ALLOW_ORIGINS
+        sync: false

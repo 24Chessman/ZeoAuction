@@ -81,6 +81,16 @@ def test_listing_gate_admits_a_verified_seller():
     assert response.json() == {"seller": str(user)}
 
 
+def test_listing_gate_admits_an_admin_without_seller_kyc():
+    response = call(
+        build(),
+        "POST",
+        "/api/v1/listings",
+        token(role="ADMIN", kyc_status="NOT_SUBMITTED"),
+    )
+    assert response.status_code == 200
+
+
 def test_suspension_wins_over_verification():
     response = call(build(), "POST", "/api/v1/listings", token(suspended=True))
     assert response.status_code == 403

@@ -3,8 +3,7 @@
 1. ``POST /kyc/aadhaar``: a photo of the Aadhaar Secure QR (and, optionally, the mobile
    number to check against what UIDAI put in it). A verified QR creates the submission (K1,
    or K5 after a rejection).
-2. ``POST /kyc/submissions/{id}/face``: 3-8 live camera frames. The match decides the
-   submission on the spot, or hands it to an administrator.
+2. A verified QR moves directly to ``UNDER_REVIEW`` for administrator approval.
 
 Responses carry the holder's name and metadata only, never a URL, never the QR payload.
 """
@@ -17,7 +16,6 @@ from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from pydantic import BaseModel
 
 from app.domain.aadhaar import MAX_IMAGE_BYTES, AadhaarSummary
-from app.domain.face import FaceAttempt
 from app.domain.submission import Document
 from app.service import KycService, SubmissionState
 from zeo_common.auth import CurrentPrincipal
@@ -69,12 +67,6 @@ class SubmissionView(BaseModel):
     documents: list[DocumentView]
 
 
-class FaceCheckView(BaseModel):
-    outcome: str
-    attempts_left: int
-    submission: SubmissionView
-
-
 def document_view(document: Document) -> DocumentView:
     return DocumentView(
         document_id=document.id, doc_type=document.doc_type, mime_type=document.mime_type,
@@ -90,13 +82,6 @@ def aadhaar_view(summary: AadhaarSummary) -> AadhaarView:
     )
 
 
-def face_status(attempts: list[FaceAttempt], left: int) -> FaceStatusView:
-    return FaceStatusView(
-        attempts_used=len(attempts), attempts_left=left,
-        last_outcome=attempts[-1].outcome if attempts else None,
-    )
-
-
 def submission_view(state: SubmissionState) -> SubmissionView:
     submission = state.submission
     return SubmissionView(
@@ -108,7 +93,7 @@ def submission_view(state: SubmissionState) -> SubmissionView:
         can_resubmit=state.can_resubmit,
         resubmit_after=state.resubmit_after,
         aadhaar=None if state.aadhaar is None else aadhaar_view(state.aadhaar),
-        face=face_status(state.attempts, state.attempts_left),
+        face=FaceStatusView(attempts_used=0, attempts_left=0, last_outcome=None),
         documents=[document_view(d) for d in state.documents],
     )
 
@@ -124,22 +109,6 @@ async def submit_aadhaar(
     # Read one byte past the limit so an oversized file is refused without buffering it all.
     data = await qr_image.read(MAX_IMAGE_BYTES + 1)
     return submission_view(await service.submit_aadhaar(principal, data, mobile))
-
-
-@router.post("/kyc/submissions/{submission_id}/face", response_model=FaceCheckView)
-async def face_check(
-    submission_id: UUID,
-    principal: CurrentPrincipal,
-    service: Service,
-    frames: Annotated[list[UploadFile], File(description="3-8 JPEG or PNG camera frames")],
-) -> FaceCheckView:
-    limit = service.max_frame_bytes + 1
-    data = [await frame.read(limit) for frame in frames[: service.policy.max_frames + 1]]
-    result = await service.face_check(principal, submission_id, data)
-    return FaceCheckView(
-        outcome=result.outcome, attempts_left=result.state.attempts_left,
-        submission=submission_view(result.state),
-    )
 
 
 @router.get("/kyc/submissions/me", response_model=SubmissionView)

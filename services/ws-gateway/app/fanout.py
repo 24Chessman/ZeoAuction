@@ -165,10 +165,14 @@ class FanoutConsumer:
 
     @classmethod
     def connect(cls, bootstrap_servers: str, group_id: str,
-                dispatch: Callable[[str, bytes], Awaitable[None]]
+                dispatch: Callable[[str, bytes], Awaitable[None]],
+                **kwargs: Any
                 ) -> "FanoutConsumer":  # pragma: no cover - needs a broker
         from aiokafka import AIOKafkaConsumer
+        from zeo_common import KafkaSettings
 
+        kafka_kwargs = KafkaSettings.from_env().consumer_kwargs()
+        kafka_kwargs.update(kwargs)
         consumer = AIOKafkaConsumer(
             BID_EVENTS, AUCTION_EVENTS,
             bootstrap_servers=bootstrap_servers,
@@ -176,6 +180,7 @@ class FanoutConsumer:
             client_id="ws-gateway",
             auto_offset_reset="latest",
             enable_auto_commit=True,
+            **kafka_kwargs,
         )
         return cls(consumer, dispatch)
 

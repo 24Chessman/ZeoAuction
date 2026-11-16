@@ -1,0 +1,34 @@
+services:
+  - type: web
+    name: zeo-fraud-detector
+    runtime: docker
+    dockerfilePath: services/fraud-detector/Dockerfile
+    dockerContext: .
+    plan: free
+    region: singapore
+    healthCheckPath: /healthz
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: KAFKA_BOOTSTRAP_SERVERS
+        sync: false
+      - key: KAFKA_SECURITY_PROTOCOL
+        value: SASL_SSL
+      - key: KAFKA_SASL_MECHANISM
+        value: SCRAM-SHA-256
+      - key: KAFKA_SASL_USERNAME
+        sync: false
+      - key: KAFKA_SASL_PASSWORD
+        sync: false
+      - key: CONSUME_BID_EVENTS
+        value: "true"
+      - key: FRAUD_ALERT_PUBLISHER
+        value: kafka
+      - key: FRAUD_ALERT_REPOSITORY
+        value: postgres
+      - key: FRAUD_WINDOW_EVENTS
+        value: "200"
+      - key: FRAUD_CLOSE_GRACE_MINUTES
+        value: "10"
+      - key: FRAUD_ALERT_THRESHOLD
+        value: "0.6"

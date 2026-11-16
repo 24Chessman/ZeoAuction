@@ -111,9 +111,11 @@ function UserMenu() {
           <Link role="menuitem" to="/account" onClick={() => setOpen(false)} className="flex items-center gap-2.5 rounded-2xl px-3 py-2.5 text-sm font-medium text-ink-muted hover:bg-surface-2 hover:text-ink">
             <User className="size-4" aria-hidden /> Account and orders
           </Link>
-          <Link role="menuitem" to="/sell/verify" onClick={() => setOpen(false)} className="flex items-center gap-2.5 rounded-2xl px-3 py-2.5 text-sm font-medium text-ink-muted hover:bg-surface-2 hover:text-ink">
-            <ShieldCheck className="size-4" aria-hidden /> Seller verification
-          </Link>
+          {user.role !== "ADMIN" && (
+            <Link role="menuitem" to="/sell/verify" onClick={() => setOpen(false)} className="flex items-center gap-2.5 rounded-2xl px-3 py-2.5 text-sm font-medium text-ink-muted hover:bg-surface-2 hover:text-ink">
+              <ShieldCheck className="size-4" aria-hidden /> Seller verification
+            </Link>
+          )}
           <button
             role="menuitem"
             onClick={async () => {

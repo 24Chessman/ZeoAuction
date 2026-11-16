@@ -2,14 +2,18 @@ const env = import.meta.env;
 
 /** Mock mode is the default so every screen works without the Docker stack. */
 export const useMocks = (env.VITE_USE_MOCKS ?? "true") !== "false";
+const rawApiUrl = env.VITE_API_GATEWAY_URL ?? env.VITE_GATEWAY_URL ?? env.VITE_API_URL;
+const apiUrl = rawApiUrl ? rawApiUrl.replace(/\/+$/, "") : undefined;
 
 export const serviceUrls = {
-  auth: env.VITE_AUTH_URL ?? "http://localhost:8001",
-  kyc: env.VITE_KYC_URL ?? "http://localhost:8002",
-  auction: env.VITE_AUCTION_URL ?? "http://localhost:8003",
-  bid: env.VITE_BID_URL ?? "http://localhost:8004",
-  payment: env.VITE_PAYMENT_URL ?? "http://localhost:8006",
-  ws: env.VITE_WS_URL ?? "ws://localhost:8010/ws",
+  auth: env.VITE_AUTH_URL ?? apiUrl ?? "http://localhost:8001",
+  kyc: env.VITE_KYC_URL ?? apiUrl ?? "http://localhost:8002",
+  auction: env.VITE_AUCTION_URL ?? apiUrl ?? "http://localhost:8003",
+  bid: env.VITE_BID_URL ?? apiUrl ?? "http://localhost:8004",
+  payment: env.VITE_PAYMENT_URL ?? apiUrl ?? "http://localhost:8006",
+  ws:
+    env.VITE_WS_URL ??
+    (apiUrl ? `${apiUrl.replace(/^http/, "ws")}/ws` : "ws://localhost:8010/ws"),
 } as const;
 
 export const featuredAuctionIds: string[] = (

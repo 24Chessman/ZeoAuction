@@ -83,7 +83,7 @@ class PostgresBidStore:
     async def insert_batch(self, rows: list[BidRow]) -> None:
         async with self.pool.acquire() as connection, connection.transaction():
             await connection.executemany(
-                "INSERT INTO bids (id, auction_id, bidder_id, amount, server_seq, "
+                "INSERT INTO bid.bids (id, auction_id, bidder_id, amount, server_seq, "
                 "idempotency_key, device_fingerprint, increment_stale, accepted_at) "
                 "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT DO NOTHING",
                 [
@@ -96,6 +96,6 @@ class PostgresBidStore:
     async def max_seq_by_auction(self) -> dict[UUID, int]:
         async with self.pool.acquire() as connection:
             records = await connection.fetch(
-                "SELECT auction_id, max(server_seq) AS seq FROM bids GROUP BY auction_id"
+                "SELECT auction_id, max(server_seq) AS seq FROM bid.bids GROUP BY auction_id"
             )
         return {r["auction_id"]: int(r["seq"]) for r in records}

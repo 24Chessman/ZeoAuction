@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: zeo-pricing
+    runtime: docker
+    dockerfilePath: services/pricing/Dockerfile
+    dockerContext: .
+    plan: free
+    region: singapore
+    healthCheckPath: /healthz
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: KAFKA_BOOTSTRAP_SERVERS
+        sync: false
+      - key: KAFKA_SECURITY_PROTOCOL
+        value: SASL_SSL
+      - key: KAFKA_SASL_MECHANISM
+        value: SCRAM-SHA-256
+      - key: KAFKA_SASL_USERNAME
+        sync: false
+      - key: KAFKA_SASL_PASSWORD
+        sync: false
+      - key: PRICING_REPOSITORY
+        value: postgres
+      - key: CONSUME_BID_EVENTS
+        value: "true"
+      - key: CORS_ALLOW_ORIGINS
+        sync: false

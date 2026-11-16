@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: zeo-bid-flusher
+    runtime: docker
+    dockerfilePath: services/bid-flusher/Dockerfile
+    dockerContext: .
+    plan: free
+    region: singapore
+    healthCheckPath: /healthz
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: KAFKA_BOOTSTRAP_SERVERS
+        sync: false
+      - key: KAFKA_SECURITY_PROTOCOL
+        value: SASL_SSL
+      - key: KAFKA_SASL_MECHANISM
+        value: SCRAM-SHA-256
+      - key: KAFKA_SASL_USERNAME
+        sync: false
+      - key: KAFKA_SASL_PASSWORD
+        sync: false
+      - key: FLUSH_BATCH_MAX_SIZE
+        value: "500"
+      - key: FLUSH_BATCH_MAX_AGE_MS
+        value: "500"
+      - key: FLUSH_POLL_INTERVAL_MS
+        value: "50"
+      - key: REPLAY_ON_START
+        value: "true"

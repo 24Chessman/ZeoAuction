@@ -85,6 +85,8 @@ async def publish(
 async def _main(argv: list[str] | None = None) -> None:  # pragma: no cover - needs a broker
     from aiokafka import AIOKafkaProducer
 
+    from zeo_common import KafkaSettings
+
     parser = argparse.ArgumentParser(description="Replay the fraud dataset into bid.events")
     parser.add_argument("--bootstrap", default="localhost:29092")
     parser.add_argument("--file", type=Path, required=True)
@@ -95,8 +97,13 @@ async def _main(argv: list[str] | None = None) -> None:  # pragma: no cover - ne
     events = list(read_events(args.file))
     if args.shift_to_now:
         events = shift_to(events, datetime.now(UTC) + timedelta(hours=1))
-    producer = AIOKafkaProducer(bootstrap_servers=args.bootstrap, acks="all",
-                                enable_idempotence=True, client_id="fraud-dataset-replay")
+    producer = AIOKafkaProducer(
+        bootstrap_servers=args.bootstrap,
+        acks="all",
+        enable_idempotence=True,
+        client_id="fraud-dataset-replay",
+        **KafkaSettings.from_env().producer_kwargs(),
+    )
     await producer.start()
     try:
         sent = await publish(events, producer, rate_per_second=args.rate)

@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: zeo-search-analytics
+    runtime: docker
+    dockerfilePath: services/search-analytics/Dockerfile
+    dockerContext: .
+    plan: free
+    region: singapore
+    healthCheckPath: /healthz
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: PAYMENT_SERVICE_URL
+        sync: false
+      - key: SEARCH_REPOSITORY
+        value: postgres
+      - key: INTERNAL_SERVICE_TOKEN
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: CORS_ALLOW_ORIGINS
+        sync: false

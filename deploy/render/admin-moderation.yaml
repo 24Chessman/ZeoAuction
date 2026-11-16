@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: zeo-admin-moderation
+    runtime: docker
+    dockerfilePath: services/admin-moderation/Dockerfile
+    dockerContext: .
+    plan: free
+    region: singapore
+    healthCheckPath: /healthz
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: ADMIN_REPOSITORY
+        value: postgres
+      - key: JWT_SECRET
+        sync: false
+      - key: CORS_ALLOW_ORIGINS
+        sync: false

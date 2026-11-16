@@ -1,7 +1,7 @@
-# ZeoAuction local stack
+# ZeoAuction stack configured for production external services (NeonDB, Upstash Redis, Aiven Kafka)
 #
-# Host ports: services 8001-8012 (http://localhost:<port>/healthz), PostgreSQL 5432,
-# Redis 6379, Kafka 29092, S3 API 8333.
+# Host ports: services 8001-8012 (http://localhost:<port>/healthz).
+# Local postgres, redis and kafka are in the "local-infra" profile.
 
 name: zeoauction
 
@@ -10,32 +10,33 @@ x-service-build: &service-build
 
 x-service-common: &service-common
   restart: unless-stopped
-  depends_on:
-    postgres:
-      condition: service_healthy
-    redis:
-      condition: service_healthy
-    kafka-init:
-      condition: service_completed_successfully
-    s3-init:
-      condition: service_completed_successfully
 
 x-service-env: &service-env
   LOG_LEVEL: ${LOG_LEVEL:-INFO}
-  REDIS_URL: redis://redis:6379/0
-  KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-  S3_ENDPOINT_URL: http://s3:8333
-  S3_ACCESS_KEY: zeo-dev-access
-  S3_SECRET_KEY: zeo-dev-secret
-  PAYMENT_ADAPTER: ${PAYMENT_ADAPTER:-mock}
-  # Shared access-token secret (LOCAL DEVELOPMENT ONLY; Render sets its own).
+  REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+  UPSTASH_REDIS_REST_URL: ${UPSTASH_REDIS_REST_URL:-}
+  UPSTASH_REDIS_REST_TOKEN: ${UPSTASH_REDIS_REST_TOKEN:-}
+  KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+  KAFKA_SECURITY_PROTOCOL: ${KAFKA_SECURITY_PROTOCOL:-PLAINTEXT}
+  KAFKA_SASL_MECHANISM: ${KAFKA_SASL_MECHANISM:-}
+  KAFKA_SASL_USERNAME: ${KAFKA_SASL_USERNAME:-}
+  KAFKA_SASL_PASSWORD: ${KAFKA_SASL_PASSWORD:-}
+  S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:?Set S3_ENDPOINT_URL to the Supabase S3 endpoint}
+  S3_PUBLIC_ENDPOINT_URL: ${S3_PUBLIC_ENDPOINT_URL:-${S3_ENDPOINT_URL}}
+  S3_ACCESS_KEY: ${S3_ACCESS_KEY:?Set S3_ACCESS_KEY to the Supabase S3 access key}
+  S3_SECRET_KEY: ${S3_SECRET_KEY:?Set S3_SECRET_KEY to the Supabase S3 secret}
+  S3_REGION: ${S3_REGION:?Set S3_REGION to the Supabase S3 region}
+  S3_BUCKET_KYC: ${S3_BUCKET_KYC:-kyc-documents}
+  S3_BUCKET_IMAGES: ${S3_BUCKET_IMAGES:-listing-images}
+  PAYMENT_ADAPTER: ${PAYMENT_ADAPTER:-razorpay}
   JWT_SECRET: ${JWT_SECRET:-zeo-dev-jwt-secret-not-for-production-use}
   CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-http://localhost:5173}
   OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaeger:4317}
 
 services:
-  # ---------------------------------------------------------------- data and messaging
+  # ---------------------------------------------------------------- local infra (profile: local-infra)
   postgres:
+    profiles: ["local-infra"]
     image: postgres:15-alpine
     restart: unless-stopped
     environment:
@@ -55,6 +56,7 @@ services:
       retries: 20
 
   redis:
+    profiles: ["local-infra"]
     image: redis:7-alpine
     restart: unless-stopped
     ports: ["6379:6379"]
@@ -65,6 +67,7 @@ services:
       retries: 20
 
   kafka:
+    profiles: ["local-infra"]
     image: apache/kafka:3.8.1
     restart: unless-stopped
     ports: ["29092:29092"]
@@ -94,6 +97,7 @@ services:
       start_period: 15s
 
   kafka-init:
+    profiles: ["local-infra"]
     image: apache/kafka:3.8.1
     depends_on:
       kafka:
@@ -101,37 +105,6 @@ services:
     volumes:
       - ./infra/kafka:/opt/zeo:ro
     entrypoint: ["sh", "/opt/zeo/create-topics.sh", "kafka:9092"]
-    restart: "no"
-
-  # S3-compatible object storage
-  s3:
-    image: chrislusf/seaweedfs:4.48
-    restart: unless-stopped
-    command: server -dir=/data -s3 -s3.config=/etc/seaweedfs/s3-identities.json
-    ports: ["8333:8333"]
-    volumes:
-      - s3data:/data
-      - ./infra/s3/s3-identities.json:/etc/seaweedfs/s3-identities.json:ro
-      - ./infra/s3/security.toml:/etc/seaweedfs/security.toml:ro
-    healthcheck:
-      test: ["CMD-SHELL", "curl -s -o /dev/null http://localhost:8333/"]
-      interval: 5s
-      timeout: 5s
-      retries: 30
-
-  s3-init:
-    image: amazon/aws-cli:2.27.0
-    depends_on:
-      s3:
-        condition: service_healthy
-    environment:
-      AWS_ACCESS_KEY_ID: zeo-dev-access
-      AWS_SECRET_ACCESS_KEY: zeo-dev-secret
-      AWS_DEFAULT_REGION: us-east-1
-      S3_ENDPOINT_URL: http://s3:8333
-    volumes:
-      - ./infra/s3:/opt/zeo:ro
-    entrypoint: ["sh", "/opt/zeo/create-buckets.sh"]
     restart: "no"
 
   # Distributed tracing with Jaeger (#101)
@@ -152,8 +125,8 @@ services:
     ports: ["8001:8000"]
     environment:
       <<: *service-env
-      DATABASE_URL: postgresql://auth_svc:auth_dev_pw@postgres:5432/zeoauction
-      # Seeded accounts log in with "zeo-dev-password" (infra/postgres/seed/dev-seed.sql).
+      DATABASE_URL: ${NEON_DB_CONNECTION_STRING:-${DATABASE_URL}}&currentSchema=auth
+      DATABASE_SCHEMA: auth
       AUTH_ACCEPT_SEED_PASSWORD: "true"
       GMAIL_USER: ${GMAIL_USER:-}
       GMAIL_PASSWORD: ${GMAIL_PASSWORD:-}
@@ -168,17 +141,11 @@ services:
     ports: ["8002:8000"]
     environment:
       <<: *service-env
-      DATABASE_URL: postgresql://kyc_svc:kyc_dev_pw@postgres:5432/zeoauction
+      DATABASE_URL: ${NEON_DB_CONNECTION_STRING:-${DATABASE_URL}}&currentSchema=kyc
+      DATABASE_SCHEMA: kyc
       S3_BUCKET: kyc-documents
-      # Signed URLs are opened by the browser, so they point at the host-mapped port.
-      S3_PUBLIC_ENDPOINT_URL: http://localhost:8333
       KYC_SIGNED_URL_TTL_SECONDS: "60"
-      # The Aadhaar Secure QR is verified against UIDAI's certificate (bundled). For demos with
-      # synthetic QRs (services/kyc/scripts/synthetic_qr.py) set, in the root .env:
-      #   KYC_EXTRA_TRUSTED_CERTS=/srv/dev-certs/dev-secure-qr.cer
       KYC_EXTRA_TRUSTED_CERTS: ${KYC_EXTRA_TRUSTED_CERTS:-}
-      # 0 = no age limit (a card's QR dates from when it was printed); e.g. 72 to demand a
-      # freshly downloaded e-Aadhaar.
       KYC_AADHAAR_MAX_AGE_HOURS: "0"
     volumes:
       - ./services/kyc/dev-certs:/srv/dev-certs:ro
@@ -189,16 +156,17 @@ services:
     ports: ["8003:8000"]
     environment:
       <<: *service-env
-      DATABASE_URL: postgresql://auction_svc:auction_dev_pw@postgres:5432/zeoauction
+      DATABASE_URL: ${NEON_DB_CONNECTION_STRING:-${DATABASE_URL}}&currentSchema=auction
+      DATABASE_SCHEMA: auction
       S3_BUCKET: listing-images
-      AUCTION_PUBLISHER: kafka          # AuctionStateChanged v1 on auction.events
-      CONSUME_BID_EVENTS: "true"        # anti-snipe (A4) and the drained winner (A6)
-      CHECK_TOKEN_FRESHNESS: "true"     # listing gate refuses tokens older than a KYC change
-      RUN_LIFECYCLE_TIMER: "true"       # A2 open, A5 close, A6 drained
+      AUCTION_PUBLISHER: kafka
+      CONSUME_BID_EVENTS: "true"
+      CHECK_TOKEN_FRESHNESS: "true"
+      RUN_LIFECYCLE_TIMER: "true"
       DRAIN_GRACE_SECONDS: "5"
       PAYMENT_SERVICE_URL: http://payment-escrow:8000
-      SETTLE_ORDERS: "true"             # S1: open the order for a CLOSED winner (CT-4)
-      CONSUME_PAYMENT_EVENTS: "true"    # A7 settle when payment.events reports HELD
+      SETTLE_ORDERS: "true"
+      CONSUME_PAYMENT_EVENTS: "true"
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-zeo-dev-internal-token-not-for-production}
 
   bid:
@@ -207,10 +175,11 @@ services:
     ports: ["8004:8000"]
     environment:
       <<: *service-env
-      DATABASE_URL: postgresql://bid_svc:bid_dev_pw@postgres:5432/zeoauction
+      DATABASE_URL: ${NEON_DB_CONNECTION_STRING:-${DATABASE_URL}}&currentSchema=bid
+      DATABASE_SCHEMA: bid
       AUCTION_SERVICE_URL: http://auction-orchestrator:8000
       PRICING_SERVICE_URL: http://pricing:8000
-      PRICING_MODE: http          # CT-3 to the Pricing Engine; "stub" = fixed tier table
+      PRICING_MODE: http
       BID_PUBLISHER: kafka
       STUB_FUNDS_LIMIT: "100000.00"
 
@@ -220,8 +189,9 @@ services:
     ports: ["8005:8000"]
     environment:
       <<: *service-env
-      DATABASE_URL: postgresql://pricing_svc:pricing_dev_pw@postgres:5432/zeoauction
-      CONSUME_BID_EVENTS: "true"        # velocity and the hot flag (#42, #44)
+      DATABASE_URL: ${NEON_DB_CONNECTION_STRING:-${DATABASE_URL}}&currentSchema=pricing
+      DATABASE_SCHEMA: pricing
+      CONSUME_BID_EVENTS: "true"
 
   payment-escrow:
     <<: *service-common
@@ -229,10 +199,10 @@ services:
     ports: ["8006:8000"]
     environment:
       <<: *service-env
-      DATABASE_URL: postgresql://payment_svc:payment_dev_pw@postgres:5432/zeoauction
-      PAYMENT_PUBLISHER: kafka          # SettlementStep v1 on payment.events
-      RUN_SETTLEMENT_WORKER: "true"     # capture retries, resumed captures, unpaid expiry
-      # Razorpay TEST MODE (ADR-0009); empty unless PAYMENT_ADAPTER=razorpay in .env.
+      DATABASE_URL: ${NEON_DB_CONNECTION_STRING:-${DATABASE_URL}}&currentSchema=payment
+      DATABASE_SCHEMA: payment
+      PAYMENT_PUBLISHER: kafka
+      RUN_SETTLEMENT_WORKER: "true"
       RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
       RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
       RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
@@ -245,7 +215,9 @@ services:
     ports: ["8007:8000"]
     environment:
       <<: *service-env
-      DATABASE_URL: postgresql://dispute_svc:dispute_dev_pw@postgres:5432/zeoauction
+      DATABASE_URL: ${NEON_DB_CONNECTION_STRING:-${DATABASE_URL}}&currentSchema=dispute
+      DATABASE_SCHEMA: dispute
+      DISPUTE_REPOSITORY: postgres
       S3_BUCKET: dispute-evidence
       PAYMENT_SERVICE_URL: http://payment-escrow:8000
 
@@ -255,7 +227,9 @@ services:
     ports: ["8008:8000"]
     environment:
       <<: *service-env
-      DATABASE_URL: postgresql://search_svc:search_dev_pw@postgres:5432/zeoauction
+      DATABASE_URL: ${NEON_DB_CONNECTION_STRING:-${DATABASE_URL}}&currentSchema=search
+      DATABASE_SCHEMA: search
+      SEARCH_REPOSITORY: postgres
 
   admin-moderation:
     <<: *service-common
@@ -263,7 +237,9 @@ services:
     ports: ["8009:8000"]
     environment:
       <<: *service-env
-      DATABASE_URL: postgresql://admin_svc:admin_dev_pw@postgres:5432/zeoauction
+      DATABASE_URL: ${NEON_DB_CONNECTION_STRING:-${DATABASE_URL}}&currentSchema=admin
+      DATABASE_SCHEMA: admin
+      ADMIN_REPOSITORY: postgres
 
   ws-gateway:
     <<: *service-common
@@ -271,9 +247,9 @@ services:
     ports: ["8010:8000"]
     environment:
       <<: *service-env
-      DATABASE_URL: postgresql://notify_svc:notify_dev_pw@postgres:5432/zeoauction
-      # One consumer group per instance: each gateway must see every event for its sockets.
-      WS_CONSUMER_GROUP: ws-gateway-local-1
+      DATABASE_URL: ${NEON_DB_CONNECTION_STRING:-${DATABASE_URL}}&currentSchema=notify
+      DATABASE_SCHEMA: notify
+      WS_CONSUMER_GROUP: ws-gateway-prod-1
       WS_CONSUME_EVENTS: "true"
 
   # ---------------------------------------------------------------- workers and cron
@@ -283,11 +259,11 @@ services:
     ports: ["8011:8000"]
     environment:
       <<: *service-env
-      DATABASE_URL: postgresql://fraud_svc:fraud_dev_pw@postgres:5432/zeoauction
-      CONSUME_BID_EVENTS: "true"        # streaming scaffold on bid.events (#52)
-      FRAUD_ALERT_PUBLISHER: kafka      # ShillAlert v1 to fraud.alerts (#53)
-      FRAUD_ALERT_REPOSITORY: postgres  # fraud.fraud_alerts, late alerts kept as misses
-      # v1 measured at 0.6; live demos use 0.8 (docs/fraud/v1-measurement.md, known limits)
+      DATABASE_URL: ${NEON_DB_CONNECTION_STRING:-${DATABASE_URL}}&currentSchema=fraud
+      DATABASE_SCHEMA: fraud
+      CONSUME_BID_EVENTS: "true"
+      FRAUD_ALERT_PUBLISHER: kafka
+      FRAUD_ALERT_REPOSITORY: postgres
       FRAUD_ALERT_THRESHOLD: ${FRAUD_ALERT_THRESHOLD:-0.6}
 
   bid-flusher:
@@ -296,22 +272,22 @@ services:
     ports: ["8012:8000"]
     environment:
       <<: *service-env
-      DATABASE_URL: postgresql://bid_svc:bid_dev_pw@postgres:5432/zeoauction
+      DATABASE_URL: ${NEON_DB_CONNECTION_STRING:-${DATABASE_URL}}&currentSchema=bid
+      DATABASE_SCHEMA: bid
       FLUSH_BATCH_MAX_SIZE: "500"
       FLUSH_BATCH_MAX_AGE_MS: "500"
       REPLAY_ON_START: "true"
 
-  # Render runs this as a Cron Job every minute (ADR-0006); locally a loop mirrors that.
   escrow-sweep:
     <<: *service-common
     build: { <<: *service-build, dockerfile: services/escrow-sweep/Dockerfile }
     entrypoint: ["sh", "-c", "while true; do python -m app.sweep; sleep 60; done"]
     environment:
       <<: *service-env
-      DATABASE_URL: postgresql://sweep_svc:sweep_dev_pw@postgres:5432/zeoauction
+      DATABASE_URL: ${NEON_DB_CONNECTION_STRING:-${DATABASE_URL}}&currentSchema=payment
+      DATABASE_SCHEMA: payment
       PAYMENT_SERVICE_URL: http://payment-escrow:8000
 
 volumes:
   pgdata:
   kafkadata:
-  s3data:
