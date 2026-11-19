@@ -270,7 +270,8 @@ export class MockServer {
       case "GET /api/v1/users/me": return ok(200, profile(this.auth(req)));
       case "PATCH /api/v1/users/me": return ok(200, this.updateMe(req, json));
       case "PUT /api/v1/users/me/preferences": return ok(200, this.updatePreferences(req, json));
-      case "GET /api/v1/auctions": return ok(200, this.listAuctions(req));
+      case "GET /api/v1/auctions": return ok(200, this.listAuctions());
+      case "GET /api/v1/auctions/mine": return ok(200, this.listMyAuctions(req));
       case "POST /api/v1/auctions": return ok(201, this.createAuction(req, json));
       case "GET /api/v1/fees/quote": return ok(200, this.quote(params.get("bid_amount") ?? ""));
       case "POST /api/v1/kyc/aadhaar": return ok(201, await this.uploadAadhaar(req));
@@ -348,14 +349,6 @@ export class MockServer {
     const header = req.headers.Authorization ?? "";
     if (!header.startsWith("Bearer ")) throw new HttpError(401, "UNAUTHENTICATED", "Missing bearer token");
     return this.principal(header.slice(7));
-  }
-
-  private optionalAuth(req: TransportRequest): MockUser | null {
-    try {
-      return this.auth(req);
-    } catch {
-      return null;
-    }
   }
 
   private admin(req: TransportRequest): MockUser {
@@ -551,9 +544,13 @@ export class MockServer {
     return auction;
   }
 
-  private listAuctions(req: TransportRequest): Auction[] {
-    const caller = this.optionalAuth(req);
-    return this.state.auctions.filter((a) => a.state !== "DRAFT" || a.seller_id === caller?.id);
+  private listAuctions(): Auction[] {
+    return this.state.auctions.filter((a) => a.state !== "DRAFT" && a.state !== "CANCELLED");
+  }
+
+  private listMyAuctions(req: TransportRequest): Auction[] {
+    const caller = this.auth(req);
+    return this.state.auctions.filter((auction) => auction.seller_id === caller.id);
   }
 
   private createAuction(req: TransportRequest, body: Record<string, unknown>): Auction {
@@ -1036,7 +1033,7 @@ export class MockServer {
       latest.decided_at = iso();
     }
     const submission: MockSubmission = {
-      id: crypto.randomUUID(), user_id: user.id, state: "SUBMITTED", rejection_reason: null,
+      id: crypto.randomUUID(), user_id: user.id, state: "UNDER_REVIEW", rejection_reason: null,
       submitted_at: iso(), decided_at: null, decided_by: null,
       documents: [{
         id: crypto.randomUUID(), doc_type: "AADHAAR_PHOTO", mime_type: "image/jpeg", size_bytes: 9_400, uploaded_at: iso(),
@@ -1049,7 +1046,8 @@ export class MockServer {
       attempts: [], face_plan: plan,
     };
     this.state.submissions.push(submission);
-    this.setStatus(user.id, "SUBMITTED");
+    // Live KYC no longer has a face-capture step: a verified Secure QR goes straight to admin.
+    this.setStatus(user.id, "UNDER_REVIEW");
     this.persist();
     return this.sellerView(submission);
   }

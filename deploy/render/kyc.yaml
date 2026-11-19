@@ -10,6 +10,8 @@ services:
     envVars:
       - key: DATABASE_URL
         sync: false
+      - key: DATABASE_SCHEMA
+        value: kyc
       - key: REDIS_URL
         sync: false
       - key: KYC_REPOSITORY
@@ -28,3 +30,5 @@ services:
         sync: false
       - key: CORS_ALLOW_ORIGINS
         sync: false
+      - key: PYTHON_ENV
+        value: production

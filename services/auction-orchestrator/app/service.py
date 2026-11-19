@@ -111,6 +111,14 @@ class AuctionService:
             raise ApiError("NOT_FOUND", f"Auction {auction_id} does not exist", 404)
         return auction
 
+    async def list_visible(self, limit: int = 50) -> list[Auction]:
+        """Return published marketplace auctions, newest first."""
+        return await self.repo.list_visible(limit)
+
+    async def list_for_seller(self, seller_id: UUID, limit: int = 100) -> list[Auction]:
+        """Return all of one seller's auctions, including drafts."""
+        return await self.repo.list_for_seller(seller_id, limit)
+
     async def _announce(self, before: Auction, after: Auction, event: str,
                         actor_id: UUID | None) -> None:
         self.metrics.transitions.labels(event=event).inc()

@@ -32,6 +32,28 @@ def test_get_auction_is_public(harness):
     assert response.json()["title"] == "Vintage film camera"
 
 
+def test_list_auctions_returns_published_listings_and_hides_drafts(harness):
+    hidden_id = harness.created(title="Still a draft")
+    visible_id = harness.created(title="Published listing")
+    harness.drive(visible_id, "publish")
+
+    response = harness.client.get("/api/v1/auctions")
+
+    assert response.status_code == 200
+    assert [auction["auction_id"] for auction in response.json()] == [visible_id]
+    assert hidden_id not in {auction["auction_id"] for auction in response.json()}
+
+
+def test_my_auctions_includes_the_callers_drafts(harness):
+    mine = harness.created(title="My draft")
+    harness.create(title="Someone else's draft", headers=bearer(uuid4()))
+
+    response = harness.client.get("/api/v1/auctions/mine", headers=bearer())
+
+    assert response.status_code == 200
+    assert [auction["auction_id"] for auction in response.json()] == [mine]
+
+
 def test_unknown_auction_is_404_with_envelope(harness):
     response = harness.client.get(f"/api/v1/auctions/{uuid4()}/state")
     assert response.status_code == 404

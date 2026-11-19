@@ -56,6 +56,12 @@ class AuctionRepository(Protocol):
 
     async def get(self, auction_id: UUID) -> Auction | None: ...
 
+    async def list_visible(self, limit: int) -> list[Auction]:
+        """Newest auctions visible in the public marketplace."""
+        ...
+
+    async def list_for_seller(self, seller_id: UUID, limit: int) -> list[Auction]: ...
+
     async def save_transition(
         self, before: Auction, after: Auction, event: str, actor_id: UUID | None
     ) -> None: ...
@@ -107,6 +113,18 @@ class InMemoryAuctionRepository:
 
     async def get(self, auction_id: UUID) -> Auction | None:
         return self.auctions.get(auction_id)
+
+    async def list_visible(self, limit: int) -> list[Auction]:
+        visible = [
+            auction
+            for auction in self.auctions.values()
+            if auction.state not in {"DRAFT", "CANCELLED"}
+        ]
+        return sorted(visible, key=lambda auction: auction.created_at, reverse=True)[:limit]
+
+    async def list_for_seller(self, seller_id: UUID, limit: int) -> list[Auction]:
+        mine = [auction for auction in self.auctions.values() if auction.seller_id == seller_id]
+        return sorted(mine, key=lambda auction: auction.created_at, reverse=True)[:limit]
 
     def _swap(self, before: Auction, after: Auction) -> None:
         current = self.auctions.get(before.id)
@@ -204,6 +222,26 @@ class PostgresAuctionRepository:
                 auction_id,
             )
         return None if row is None else _row_to_auction(row)
+
+    async def list_visible(self, limit: int) -> list[Auction]:
+        async with self.pool.acquire() as connection:
+            rows = await connection.fetch(
+                f"SELECT {_COLUMNS} FROM auction.auctions "  # noqa: S608 - constant columns
+                "WHERE state NOT IN ('DRAFT', 'CANCELLED') "
+                "ORDER BY created_at DESC LIMIT $1",
+                limit,
+            )
+        return [_row_to_auction(row) for row in rows]
+
+    async def list_for_seller(self, seller_id: UUID, limit: int) -> list[Auction]:
+        async with self.pool.acquire() as connection:
+            rows = await connection.fetch(
+                f"SELECT {_COLUMNS} FROM auction.auctions "  # noqa: S608 - constant columns
+                "WHERE seller_id = $1 ORDER BY created_at DESC LIMIT $2",
+                seller_id,
+                limit,
+            )
+        return [_row_to_auction(row) for row in rows]
 
     async def save_transition(
         self, before: Auction, after: Auction, event: str, actor_id: UUID | None

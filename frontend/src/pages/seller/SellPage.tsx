@@ -12,10 +12,10 @@ import { ListingGatePanel } from "@/components/kyc/ListingGatePanel";
 
 export function SellPage() {
   const { user } = useAuth();
-  const { data, loading } = useAsync(() => auctionApi.list(), [user?.user_id]);
+  const { data, loading } = useAsync(() => auctionApi.mine(), [user?.user_id]);
   if (!user) return null;
   const verified = user.kyc_status === "VERIFIED";
-  const mine = (data ?? []).filter((a) => a.seller_id === user.user_id);
+  const mine = data ?? [];
 
   return (
     <div className="mx-auto max-w-page px-4 py-10 sm:px-6">

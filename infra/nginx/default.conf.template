@@ -74,6 +74,13 @@ server {
         include /etc/nginx/proxy_params;
     }
 
+    # Nginx automatically redirects the slashless collection path when only the
+    # trailing-slash proxy location exists. CORS preflight requests must not be redirected.
+    location = /api/v1/auctions {
+        proxy_pass ${AUCTION_URL};
+        include /etc/nginx/proxy_params;
+    }
+
     location /api/v1/auctions/ {
         proxy_pass ${AUCTION_URL};
         include /etc/nginx/proxy_params;

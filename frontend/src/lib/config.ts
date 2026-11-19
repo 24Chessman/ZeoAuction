@@ -1,9 +1,14 @@
 const env = import.meta.env;
 
 const STORAGE_KEY = "zeo_use_mocks";
+const configuredUseMocks = (env.ZEO_USE_MOCKS ?? env.VITE_USE_MOCKS ?? "true") !== "false";
+
+/** Runtime mode switching is a development/demo feature and is disabled in production. */
+export const allowMockModeSwitch =
+  env.DEV || (env.ZEO_ALLOW_MOCK_SWITCH ?? env.VITE_ALLOW_MOCK_SWITCH) === "true";
 
 function resolveUseMocks(): boolean {
-  if (typeof window !== "undefined") {
+  if (allowMockModeSwitch && typeof window !== "undefined") {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored === "true") return true;
@@ -12,14 +17,14 @@ function resolveUseMocks(): boolean {
       // storage unavailable or restricted
     }
   }
-  return (env.ZEO_USE_MOCKS ?? env.VITE_USE_MOCKS ?? "true") !== "false";
+  return configuredUseMocks;
 }
 
 /** Mock mode: defaults to env, but can be switched at runtime via localStorage. */
 export const useMocks = resolveUseMocks();
 
 export function toggleAppMode(nextMode?: boolean): void {
-  if (typeof window === "undefined") return;
+  if (!allowMockModeSwitch || typeof window === "undefined") return;
   const current = resolveUseMocks();
   const next = nextMode !== undefined ? nextMode : !current;
   try {
@@ -51,11 +56,3 @@ export const serviceUrls = {
     (apiUrl ? `${apiUrl.replace(/^http/, "ws")}/ws` : "ws://localhost:8010/ws"),
 } as const;
 
-export const featuredAuctionIds: string[] = (
-  env.ZEO_FEATURED_AUCTIONS ??
-  env.VITE_FEATURED_AUCTIONS ??
-  "00000000-0000-4000-8000-000000000201"
-)
-  .split(",")
-  .map((id) => id.trim())
-  .filter(Boolean);
