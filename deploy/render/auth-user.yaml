@@ -24,6 +24,12 @@ services:
         sync: false
       - key: GMAIL_PASSWORD
         sync: false
+      - key: BREVO_API_KEY
+        sync: false
+      - key: BREVO_SENDER_EMAIL
+        sync: false
+      - key: BREVO_SENDER_NAME
+        value: ZeoAuction
       - key: SMTP_HOST
         value: smtp.gmail.com
       - key: SMTP_PORT

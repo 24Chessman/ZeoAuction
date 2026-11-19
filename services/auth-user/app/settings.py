@@ -19,6 +19,9 @@ class Settings:
     smtp_port: int = 587
     smtp_use_tls: bool = True
     frontend_url: str = "http://localhost:5173"
+    brevo_api_key: str = ""
+    brevo_sender_email: str = ""
+    brevo_sender_name: str = "ZeoAuction"
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -37,4 +40,8 @@ class Settings:
             smtp_port=env_int("SMTP_PORT", 587),
             smtp_use_tls=env_bool("SMTP_USE_TLS", True),
             frontend_url=env_str("FRONTEND_URL", "http://localhost:5173"),
+            # BRAVE_API_KEY is accepted as a compatibility alias for an easy-to-make typo.
+            brevo_api_key=env_str("BREVO_API_KEY", "") or env_str("BRAVE_API_KEY", ""),
+            brevo_sender_email=env_str("BREVO_SENDER_EMAIL", "") or gmail_user,
+            brevo_sender_name=env_str("BREVO_SENDER_NAME", "ZeoAuction"),
         )

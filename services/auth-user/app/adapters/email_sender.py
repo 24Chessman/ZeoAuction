@@ -1,13 +1,18 @@
 """Gmail SMTP email delivery for verification codes, email links, and password resets."""
 
 import asyncio
+import json
 import logging
 import smtplib
 from email.message import EmailMessage
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 from app.settings import Settings
 
 logger = logging.getLogger("auth_svc.email")
+
+_BREVO_EMAIL_API_URL = "https://api.brevo.com/v3/smtp/email"
 
 _OTP_HTML_TEMPLATE = """\
 <!DOCTYPE html>
@@ -94,9 +99,67 @@ font-size:15px;display:inline-block;box-shadow:0 4px 14px rgba(255,138,92,0.4);"
 """  # noqa: S105
 
 
-def _send_email_sync(
+def _send_brevo_email_sync(
     to_email: str, subject: str, text_content: str, html_content: str, settings: Settings
 ) -> bool:
+    """Deliver one transactional email through Brevo's HTTPS API."""
+    api_key = (settings.brevo_api_key or "").strip()
+    sender_email = (settings.brevo_sender_email or settings.gmail_user or "").strip()
+    sender_name = (settings.brevo_sender_name or "ZeoAuction").strip()
+
+    if not api_key or not sender_email:
+        logger.warning(
+            "[AUTH-EMAIL] Missing Brevo configuration (API_KEY=%s, SENDER_EMAIL='%s'). "
+            "Email to <%s> NOT sent.",
+            bool(api_key),
+            sender_email,
+            to_email,
+        )
+        return False
+
+    payload = json.dumps(
+        {
+            "sender": {"name": sender_name, "email": sender_email},
+            "to": [{"email": to_email}],
+            "subject": subject,
+            "textContent": text_content,
+            "htmlContent": html_content,
+        }
+    ).encode("utf-8")
+    request = Request(
+        _BREVO_EMAIL_API_URL,
+        data=payload,
+        headers={
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "api-key": api_key,
+        },
+        method="POST",
+    )
+
+    logger.info("[AUTH-EMAIL] Sending '%s' to <%s> through Brevo HTTPS API", subject, to_email)
+    try:
+        with urlopen(request, timeout=15) as response:  # noqa: S310 - fixed trusted HTTPS URL
+            status = response.status
+        if 200 <= status < 300:
+            logger.info("[AUTH-EMAIL] Brevo accepted email for <%s>", to_email)
+            return True
+        logger.error("[AUTH-EMAIL] Brevo returned unexpected HTTP status %s", status)
+    except HTTPError as exc:
+        # Brevo's JSON error is safe and useful for diagnosing an unverified sender or bad key.
+        response_body = exc.read().decode("utf-8", errors="replace")[:500]
+        logger.error("[AUTH-EMAIL] Brevo rejected email (HTTP %s): %s", exc.code, response_body)
+    except URLError as exc:
+        logger.error("[AUTH-EMAIL] Could not connect to Brevo API: %s", exc.reason)
+    except Exception as exc:
+        logger.exception("[AUTH-EMAIL] Unexpected Brevo delivery error: %s", exc)
+    return False
+
+
+def _send_smtp_email_sync(
+    to_email: str, subject: str, text_content: str, html_content: str, settings: Settings
+) -> bool:
+    """Legacy Gmail SMTP fallback, retained for local development."""
     username = (settings.gmail_user or "").strip()
     # Google App Passwords often contain spaces (e.g. 'xxxx yyyy zzzz wwww')
     password = (settings.gmail_password or "").replace(" ", "").strip()
@@ -169,9 +232,20 @@ def _send_email_sync(
         return False
 
 
+def _send_email_sync(
+    to_email: str, subject: str, text_content: str, html_content: str, settings: Settings
+) -> bool:
+    """Prefer Brevo on Render; fall back to Gmail SMTP for existing local setups."""
+    if settings.brevo_api_key:
+        return _send_brevo_email_sync(
+            to_email, subject, text_content, html_content, settings
+        )
+    return _send_smtp_email_sync(to_email, subject, text_content, html_content, settings)
+
+
 async def send_otp_email(to_email: str, otp_code: str, settings: Settings) -> bool:
-    """Send a verification OTP email using Gmail SMTP."""
-    logger.info("[AUTH-EMAIL] Queuing OTP email for <%s> (code: %s)", to_email, otp_code)
+    """Send a verification OTP through the configured transactional email provider."""
+    logger.info("[AUTH-EMAIL] Queuing OTP email for <%s>", to_email)
     try:
         sent = await asyncio.to_thread(
             _send_email_sync,

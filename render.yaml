@@ -99,6 +99,12 @@ services:
         sync: false
       - key: FRONTEND_URL
         sync: false
+      - key: BREVO_API_KEY
+        sync: false
+      - key: BREVO_SENDER_EMAIL
+        sync: false
+      - key: BREVO_SENDER_NAME
+        value: ZeoAuction
       - key: REPOSITORY
         value: postgres
       - key: PYTHON_ENV
