@@ -2,7 +2,6 @@ import { useMemo, useState } from "react";
 import { Gavel, Search, SearchX, SlidersHorizontal, Sparkles } from "lucide-react";
 import { useAuth } from "@/app/auth";
 import { auctionApi, bidApi, type Auction } from "@/lib/api";
-import { useMocks } from "@/lib/config";
 import { cn } from "@/lib/cn";
 import { describeError } from "@/lib/errors";
 import { titleCase } from "@/lib/format";
@@ -199,8 +198,8 @@ export function AuctionsPage() {
           >
             {filter === "recommended"
               ? "None of the active auctions match your currently selected categories."
-              : !useMocks && !query && !category
-              ? "Live mode lists the featured auctions from VITE_FEATURED_AUCTIONS and the ones created in this browser."
+              : !query && !category
+              ? "No published auctions are currently available."
               : "Try another tab or search."}
           </EmptyState>
         ) : (

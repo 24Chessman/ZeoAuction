@@ -117,8 +117,6 @@ ZEO_API_GATEWAY_URL=https://zeo-api-gateway.onrender.com
 ZEO_API_URL=https://zeo-api-gateway.onrender.com
 ZEO_WS_URL=wss://zeo-api-gateway.onrender.com/ws
 
-# Featured live auctions displayed on catalog
-ZEO_FEATURED_AUCTIONS=00000000-0000-4000-8000-000000000201
 ```
 
 ---

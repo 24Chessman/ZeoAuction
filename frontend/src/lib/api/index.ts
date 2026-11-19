@@ -1,4 +1,3 @@
-import { featuredAuctionIds, useMocks } from "../config";
 import { ApiError } from "../errors";
 import { toMoneyString, type Cents } from "../money";
 import { request } from "./http";
@@ -11,26 +10,6 @@ import type {
 export * from "./types";
 export { refreshSession } from "./http";
 export { session } from "./session";
-
-const MY_AUCTIONS_KEY = "zeo.myAuctions";
-
-function rememberAuction(id: string): void {
-  try {
-    const ids = new Set<string>(JSON.parse(localStorage.getItem(MY_AUCTIONS_KEY) ?? "[]"));
-    ids.add(id);
-    localStorage.setItem(MY_AUCTIONS_KEY, JSON.stringify([...ids]));
-  } catch {
-    // Remembering is a convenience for the browse page; losing it loses nothing on the server.
-  }
-}
-
-function rememberedAuctions(): string[] {
-  try {
-    return JSON.parse(localStorage.getItem(MY_AUCTIONS_KEY) ?? "[]");
-  } catch {
-    return [];
-  }
-}
 
 export const authApi = {
   async register(body: { email: string; password: string; display_name: string }): Promise<RegisterResult> {
@@ -72,23 +51,17 @@ export const authApi = {
 };
 
 export const auctionApi = {
-  /**
-   * There is no list endpoint before search-analytics (Plan 6). Live mode loads the featured
-   * ids from config plus the auctions created in this browser; mock mode lists its catalogue.
-   */
   async list(): Promise<Auction[]> {
-    if (useMocks) return (await request<Auction[]>("auction", "GET", "/api/v1/auctions")).data;
-    const ids = [...new Set([...featuredAuctionIds, ...rememberedAuctions()])];
-    const results = await Promise.allSettled(ids.map((id) => auctionApi.get(id)));
-    return results.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
+    return (await request<Auction[]>("auction", "GET", "/api/v1/auctions")).data;
+  },
+  async mine(): Promise<Auction[]> {
+    return (await request<Auction[]>("auction", "GET", "/api/v1/auctions/mine", { auth: true })).data;
   },
   async get(id: string): Promise<Auction> {
     return (await request<Auction>("auction", "GET", `/api/v1/auctions/${id}`)).data;
   },
   async create(body: CreateAuction): Promise<Auction> {
-    const auction = (await request<Auction>("auction", "POST", "/api/v1/auctions", { auth: true, json: body })).data;
-    rememberAuction(auction.auction_id);
-    return auction;
+    return (await request<Auction>("auction", "POST", "/api/v1/auctions", { auth: true, json: body })).data;
   },
   /** Seller only, while DRAFT or SCHEDULED; at most six JPEG, PNG or WebP photos. */
   async addImage(id: string, image: File): Promise<Auction> {

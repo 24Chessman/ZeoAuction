@@ -127,8 +127,12 @@ services:
     envVars:
       - key: DATABASE_URL
         sync: false
-      - key: REPOSITORY
+      - key: DATABASE_SCHEMA
+        value: kyc
+      - key: KYC_REPOSITORY
         value: postgres
+      - key: KYC_STORAGE
+        value: s3
       - key: PYTHON_ENV
         value: production
 
@@ -382,6 +386,4 @@ services:
       - key: VITE_API_URL
         sync: false
       - key: VITE_WS_URL
-        sync: false
-      - key: VITE_FEATURED_AUCTIONS
         sync: false

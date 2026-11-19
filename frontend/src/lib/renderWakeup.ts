@@ -4,6 +4,7 @@
  * never delay or break the user-facing application.
  */
 export const renderServiceUrls = [
+  "https://zeo-api-gateway.onrender.com",
   "https://zeo-admin-moderation-wuus.onrender.com",
   "https://zeo-auction-orchestrator.onrender.com",
   "https://zeo-auth-user.onrender.com",
@@ -18,11 +19,12 @@ export const renderServiceUrls = [
 
 /** Sends a non-blocking request to each deployed Render service. */
 export function wakeRenderServices(fetcher: typeof fetch = fetch): void {
-  for (const url of renderServiceUrls) {
-    void fetcher(url, {
+  for (const baseUrl of renderServiceUrls) {
+    void fetcher(`${baseUrl}/healthz`, {
       method: "GET",
       // Wake the service even if its API does not grant the frontend CORS access.
       mode: "no-cors",
+      cache: "no-store",
       // Do not make navigation wait for these requests.
       keepalive: true,
     }).catch(() => {

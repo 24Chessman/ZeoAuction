@@ -1,4 +1,4 @@
-import type { AdminSubmission, FaceCheckResult, KycSubmission, QueuePage } from "../api/types";
+import type { AdminSubmission, KycSubmission, QueuePage } from "../api/types";
 import { makeSigner, secureQrText, type QrSigner } from "./secureQrFixture";
 import { MockServer } from "./server";
 
@@ -67,25 +67,18 @@ async function upload(mock: MockServer, token: string, name?: string) {
   return response.body as KycSubmission;
 }
 
-describe("mock Aadhaar Secure QR and face check", () => {
-  it("verifies the Aadhaar, then a clear face match puts the seller in the admin queue", async () => {
+describe("mock Aadhaar Secure QR verification", () => {
+  it("verifies the Aadhaar and puts the seller directly in the admin queue", async () => {
     const mock = server();
     const token = await login(mock, "unverified@zeo.local");
     const submission = await upload(mock, token);
-    expect(submission).toMatchObject({ state: "SUBMITTED", can_resubmit: true, face: { attempts_left: 3, last_outcome: null } });
+    expect(submission).toMatchObject({ state: "UNDER_REVIEW", can_resubmit: false });
     expect(submission.aadhaar).toMatchObject({
       holder_name: "Asha Verma", year_of_birth: 1998, gender: "F", state: "Maharashtra", reference_last4: "3632",
       qr_generated_at: "2026-01-15T05:00:00.123Z", mobile_verified: null,
     });
     expect(submission.aadhaar).not.toHaveProperty("pincode");
-
-    const check = await send(mock, token, "POST", `/api/v1/kyc/submissions/${submission.submission_id}/face`, frames(6));
-    expect(check.status).toBe(200);
-    const result = check.body as FaceCheckResult;
-    expect(result.outcome).toBe("MATCH");
-    expect(result.submission.state).toBe("UNDER_REVIEW");
-    expect(result.submission.decided_at).toBeNull();
-    expect(result.submission.documents.map((d) => d.doc_type)).toEqual(["AADHAAR_PHOTO", "FACE_CAPTURE"]);
+    expect(submission.documents.map((d) => d.doc_type)).toEqual(["AADHAAR_PHOTO"]);
   });
 
   it("names the field when the QR or mobile is wrong, and refuses non-images", async () => {
@@ -100,47 +93,35 @@ describe("mock Aadhaar Secure QR and face check", () => {
     expect(minor.body).toMatchObject({ details: { reason: "underage", field: "qr_image" } });
     const wrongMobile = await send(mock, token, "POST", "/api/v1/kyc/aadhaar", aadhaarForm(undefined, PNG, "9999999999"));
     expect(wrongMobile.body).toMatchObject({ details: { reason: "mobile_mismatch", field: "mobile" } });
-    const rightMobile = await send(mock, token, "POST", "/api/v1/kyc/aadhaar", aadhaarForm(undefined, PNG, "+91 98765 43210"));
-    expect((rightMobile.body as KycSubmission).aadhaar?.mobile_verified).toBe(true);
     const pdf = new Blob(["%PDF-1.7"], { type: "application/pdf" });
     const notImage = await send(mock, token, "POST", "/api/v1/kyc/aadhaar", aadhaarForm("aadhaar.pdf", pdf));
     expect(notImage.body).toMatchObject({ details: { reason: "not_image" } });
+    const rightMobile = await send(mock, token, "POST", "/api/v1/kyc/aadhaar", aadhaarForm(undefined, PNG, "+91 98765 43210"));
+    expect((rightMobile.body as KycSubmission).aadhaar?.mobile_verified).toBe(true);
   });
 
-  it("refuses too few frames without counting an attempt", async () => {
+  it("does not run the removed face-capture flow", async () => {
     const mock = server();
     const token = await login(mock, "unverified@zeo.local");
     const { submission_id } = await upload(mock, token);
     const response = await send(mock, token, "POST", `/api/v1/kyc/submissions/${submission_id}/face`, frames(2));
-    expect(response.status).toBe(422);
-    expect(response.body).toMatchObject({ code: "FACE_CAPTURE_INVALID", details: { reason: "frame_count" } });
-    const me = (await send(mock, token, "GET", "/api/v1/kyc/submissions/me")).body as KycSubmission;
-    expect(me.face.attempts_left).toBe(3);
+    expect(response.status).toBe(409);
+    expect(response.body).toMatchObject({ code: "CONFLICT", details: { state: "UNDER_REVIEW" } });
   });
 
-  it("rejects after three failed matches and then enforces the cooldown", async () => {
+  it("refuses a replacement while the submission is under review", async () => {
     const mock = server();
     const token = await login(mock, "unverified@zeo.local");
-    const { submission_id } = await upload(mock, token, "nomatch.png");
-    const outcomes: FaceCheckResult[] = [];
-    for (let i = 0; i < 3; i += 1) {
-      outcomes.push((await send(mock, token, "POST", `/api/v1/kyc/submissions/${submission_id}/face`, frames(6))).body as FaceCheckResult);
-    }
-    expect(outcomes.map((o) => [o.outcome, o.attempts_left])).toEqual([["NO_MATCH", 2], ["NO_MATCH", 1], ["NO_MATCH", 0]]);
-    expect(outcomes[2].submission).toMatchObject({ state: "REJECTED", can_resubmit: false });
-    expect(outcomes[2].submission.resubmit_after).not.toBeNull();
-    expect(outcomes[0].submission.can_resubmit).toBe(false); // a counted attempt locks the QR
+    await upload(mock, token);
     const again = await send(mock, token, "POST", "/api/v1/kyc/aadhaar", aadhaarForm());
     expect(again.status).toBe(409);
-    expect(again.body).toMatchObject({ code: "KYC_COOLDOWN" });
+    expect(again.body).toMatchObject({ code: "KYC_ALREADY_ACTIVE" });
   });
 
-  it("sends a close match to the admin queue, where an administrator approves it", async () => {
+  it("sends a verified QR to the admin queue, where an administrator approves it", async () => {
     const mock = server();
     const seller = await login(mock, "unverified@zeo.local");
     const { submission_id } = await upload(mock, seller, "review.png");
-    const check = (await send(mock, seller, "POST", `/api/v1/kyc/submissions/${submission_id}/face`, frames(6))).body as FaceCheckResult;
-    expect(check).toMatchObject({ outcome: "REVIEW", submission: { state: "UNDER_REVIEW" } });
 
     const admin = await login(mock, "admin@zeo.local");
     const queue = (await send(mock, admin, "GET", "/api/v1/admin/kyc/queue?limit=50&offset=0")).body as QueuePage;
@@ -148,21 +129,21 @@ describe("mock Aadhaar Secure QR and face check", () => {
     expect(queue.items.every((i) => i.state === "UNDER_REVIEW")).toBe(true);
     const detail = (await send(mock, admin, "GET", `/api/v1/admin/kyc/${submission_id}`)).body as AdminSubmission;
     expect(detail.aadhaar?.pincode).toBe("411001");
-    expect(detail.face_attempts).toHaveLength(1);
+    expect(detail.face_attempts).toHaveLength(0);
     const approved = await send(mock, admin, "POST", `/api/v1/admin/kyc/${submission_id}/approve`, "{}");
     expect(approved.body).toMatchObject({ state: "VERIFIED" });
     const startReview = await send(mock, admin, "POST", `/api/v1/admin/kyc/${submission_id}/start-review`, "{}");
     expect(startReview.status).toBe(404);
   });
 
-  it("replaces a waiting submission when a new file is uploaded before any face attempt", async () => {
+  it("keeps the active submission when another QR is uploaded", async () => {
     const mock = server();
     const token = await login(mock, "unverified@zeo.local");
     const first = await upload(mock, token);
-    const second = await upload(mock, token);
-    expect(second.submission_id).not.toBe(first.submission_id);
-    const admin = await login(mock, "admin@zeo.local");
-    const old = (await send(mock, admin, "GET", `/api/v1/admin/kyc/${first.submission_id}`)).body as AdminSubmission;
-    expect(old).toMatchObject({ state: "REJECTED", rejection_reason: "Replaced by a new Aadhaar QR upload" });
+    const second = await send(mock, token, "POST", "/api/v1/kyc/aadhaar", aadhaarForm());
+    expect(second.status).toBe(409);
+    expect(second.body).toMatchObject({ code: "KYC_ALREADY_ACTIVE", details: { state: "UNDER_REVIEW" } });
+    const current = (await send(mock, token, "GET", "/api/v1/kyc/submissions/me")).body as KycSubmission;
+    expect(current.submission_id).toBe(first.submission_id);
   });
 });

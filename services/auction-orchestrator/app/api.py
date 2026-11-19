@@ -19,7 +19,7 @@ from datetime import UTC, datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.domain.auction import Auction
@@ -154,6 +154,26 @@ async def create_auction(
         closes_at=body.closes_at,
     )
     return to_view(await service.create(seller, draft), [])
+
+
+@router.get("/auctions", response_model=list[AuctionView])
+async def list_auctions(
+    service: Service,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+) -> list[AuctionView]:
+    """Public marketplace catalogue; drafts and cancelled listings are excluded."""
+    return [await view(service, auction) for auction in await service.list_visible(limit)]
+
+
+@router.get("/auctions/mine", response_model=list[AuctionView])
+async def list_my_auctions(
+    principal: CurrentPrincipal,
+    service: Service,
+    limit: Annotated[int, Query(ge=1, le=100)] = 100,
+) -> list[AuctionView]:
+    """The signed-in seller's listings, including drafts and cancelled auctions."""
+    auctions = await service.list_for_seller(principal.user_id, limit)
+    return [await view(service, auction) for auction in auctions]
 
 
 @router.get("/auctions/{auction_id}", response_model=AuctionView)

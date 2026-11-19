@@ -6,6 +6,7 @@ import { useConnectionStatus } from "@/app/live";
 import { useTheme } from "@/app/theme";
 import { ButtonLink, KycBadge } from "@/components/ui";
 import { cn } from "@/lib/cn";
+import { allowMockModeSwitch } from "@/lib/config";
 import { initials } from "@/lib/format";
 import { policy } from "@/lib/policy";
 import { Logo } from "./Logo";
@@ -226,7 +227,7 @@ export function AppShell() {
           </p>
         </div>
       </footer>
-      <MockControls />
+      {allowMockModeSwitch && <MockControls />}
     </div>
   );
 }
