@@ -10,6 +10,8 @@ services:
     envVars:
       - key: DATABASE_URL
         sync: false
+      - key: DATABASE_SCHEMA
+        value: auth
       - key: FRONTEND_URL
         sync: false
       - key: REDIS_URL

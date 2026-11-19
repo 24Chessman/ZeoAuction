@@ -13,6 +13,7 @@ class Settings:
     # documented dev password, re-hashing it on first use. Never enabled on Render.
     accept_seed_password: bool
     seed_password: str
+    database_schema: str = "auth"
     gmail_user: str = ""
     gmail_password: str = ""
     smtp_host: str = "smtp.gmail.com"
@@ -31,6 +32,7 @@ class Settings:
             database_url=env_str(
                 "DATABASE_URL", "postgresql://auth_svc:auth_dev_pw@localhost:5432/zeoauction"
             ),
+            database_schema=env_str("DATABASE_SCHEMA", "auth"),
             refresh_ttl_days=env_int("REFRESH_TOKEN_TTL_DAYS", 14),
             accept_seed_password=env_bool("AUTH_ACCEPT_SEED_PASSWORD", False),
             seed_password=env_str("AUTH_SEED_PASSWORD", "zeo-dev-password"),
