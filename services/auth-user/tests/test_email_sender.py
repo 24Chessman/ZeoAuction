@@ -24,6 +24,7 @@ def settings(**overrides: str) -> Settings:
 def test_brevo_delivery_preserves_html_and_text_templates(monkeypatch) -> None:
     response = MagicMock()
     response.status = 201
+    response.read.return_value = b'{"messageId":"brevo-test-message-id"}'
     response.__enter__.return_value = response
     urlopen = MagicMock(return_value=response)
     monkeypatch.setattr(email_sender, "urlopen", urlopen)

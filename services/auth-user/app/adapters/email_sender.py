@@ -141,8 +141,19 @@ def _send_brevo_email_sync(
     try:
         with urlopen(request, timeout=15) as response:  # noqa: S310 - fixed trusted HTTPS URL
             status = response.status
+            response_body = response.read().decode("utf-8", errors="replace")
         if 200 <= status < 300:
-            logger.info("[AUTH-EMAIL] Brevo accepted email for <%s>", to_email)
+            message_id = "unknown"
+            if response_body:
+                try:
+                    message_id = str(json.loads(response_body).get("messageId", "unknown"))
+                except (json.JSONDecodeError, AttributeError):
+                    pass
+            logger.info(
+                "[AUTH-EMAIL] Brevo accepted email for <%s> (message_id=%s)",
+                to_email,
+                message_id,
+            )
             return True
         logger.error("[AUTH-EMAIL] Brevo returned unexpected HTTP status %s", status)
     except HTTPError as exc:
