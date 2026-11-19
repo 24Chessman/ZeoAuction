@@ -11,7 +11,7 @@ A high-concurrency, distributed real-time auction platform built with a microser
 * **API Gateway (Render)**: [https://zeo-api-gateway.onrender.com](https://zeo-api-gateway.onrender.com)
 * **GitHub Repository**: [https://github.com/sagar-dot-bera/ZeoAuction](https://github.com/sagar-dot-bera/ZeoAuction)
 
----
+
 
 ## 🏗️ High-Level Architecture
 
