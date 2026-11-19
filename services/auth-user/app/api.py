@@ -515,24 +515,35 @@ async def verify_gmail_otp(
 async def refresh_session(
     body: RefreshRequest, repo: Users, refresh: Refresh, jwt: Jwt
 ) -> TokenPair:
+    logger.info("[AUTH] Refresh session requested")
     try:
         user_id, new_token = await refresh.rotate(body.refresh_token)
     except RefreshTokenError as exc:
+        logger.warning("[AUTH-ERROR] Refresh token rotation failed: %s", exc)
         raise refresh_error(exc) from exc
     user = await repo.get(user_id)
     if user is None:
+        logger.warning("[AUTH-ERROR] User id=%s from refresh token not found in database", user_id)
         raise refresh_error(RefreshTokenError("REFRESH_TOKEN_INVALID", "Account no longer exists"))
+    logger.info("[AUTH] Refresh token rotated successfully for user id=%s", user.id)
     return await token_pair(user, jwt, new_token)
 
 
 @router.post("/auth/logout", status_code=204)
 async def logout(body: RefreshRequest, refresh: Refresh) -> Response:
+    logger.info("[AUTH] Logout requested, revoking refresh token")
     await refresh.revoke(body.refresh_token)
+    logger.info("[AUTH] Logout complete")
     return Response(status_code=204)
 
 
 async def _me(repo: UserRepository, principal: CurrentPrincipal) -> User:
+    logger.info("[AUTH] Querying current user profile for user_id=%s", principal.user_id)
     user = await repo.get(principal.user_id)
+    if user is None:
+        logger.warning("[AUTH-ERROR] Profile lookup failed: user_id=%s not found", principal.user_id)
+        raise ApiError("NOT_FOUND", "User not found", 404)
+    return user
     if user is None:
         raise ApiError("NOT_FOUND", "Account does not exist", 404)
     return user

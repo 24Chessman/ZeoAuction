@@ -60,8 +60,14 @@ export const ERROR_COPY: Record<string, Copy> = {
   CONFLICT: { title: "That change conflicts with the current state" },
   VALIDATION_ERROR: { title: "Please check the highlighted fields" },
   RATE_LIMITED: { title: "Too many requests", hint: "Wait a moment and try again." },
-  INTERNAL_ERROR: { title: "Something went wrong on our side" },
-  SERVICE_UNAVAILABLE: { title: "A service is temporarily unavailable", hint: "Nothing changed. Try again shortly." },
+  INTERNAL_ERROR: {
+    title: "Something went wrong on our side",
+    hint: "An unexpected error occurred. Please try again shortly.",
+  },
+  SERVICE_UNAVAILABLE: {
+    title: "Service temporarily unavailable",
+    hint: "The backend service may be waking up or deploying. Please wait a few seconds and try again.",
+  },
   // Auth and KYC service codes
   INVALID_CREDENTIALS: { title: "Email or password is incorrect" },
   EMAIL_ALREADY_REGISTERED: { title: "An account with this email already exists" },
@@ -79,13 +85,37 @@ export const ERROR_COPY: Record<string, Copy> = {
   NETWORK_ERROR: { title: "Can't reach the server", hint: "Check your connection and try again." },
 };
 
+function sanitizeMessage(msg: unknown): string {
+  if (typeof msg !== "string") return "An unexpected error occurred.";
+  const trimmed = msg.trim();
+  // Strip or replace raw HTML error pages (e.g. 502/503 from Nginx or Render)
+  if (trimmed.startsWith("<") || trimmed.includes("<html") || trimmed.includes("<!DOCTYPE")) {
+    return "The service is temporarily unavailable or starting up. Please try again shortly.";
+  }
+  // Truncate overly verbose server dumps
+  if (trimmed.length > 200) {
+    return `${trimmed.slice(0, 197)}...`;
+  }
+  return trimmed;
+}
+
 export function describeError(error: unknown): Copy & { code: string; message: string } {
   if (error instanceof ApiError) {
-    const copy = ERROR_COPY[error.code] ?? { title: error.message };
-    return { ...copy, code: error.code, message: error.message };
+    const cleanMessage = sanitizeMessage(error.message);
+    const copy = ERROR_COPY[error.code] ?? {
+      title: error.status >= 500 ? "Service temporarily unavailable" : cleanMessage,
+      hint: error.status >= 500 ? "The backend may be warming up. Please try again shortly." : undefined,
+    };
+    return { ...copy, code: error.code, message: cleanMessage };
   }
-  const message = error instanceof Error ? error.message : String(error);
-  return { title: "Something went wrong", code: "UNKNOWN", message };
+  const rawMessage = error instanceof Error ? error.message : String(error);
+  const cleanMessage = sanitizeMessage(rawMessage);
+  return {
+    title: "Something went wrong",
+    code: "UNKNOWN",
+    message: cleanMessage,
+    hint: "Please check your connection and try again.",
+  };
 }
 
 /** The `field` key the services put in VALIDATION_ERROR details, if any. */

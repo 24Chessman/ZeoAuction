@@ -1,110 +1,61 @@
 # ZeoAuction — Deployment, Hosting & Architecture Documentation
 
+* **GitHub Repository**: [https://github.com/sagar-dot-bera/ZeoAuction](https://github.com/sagar-dot-bera/ZeoAuction)
+* **Live Web Application**: [https://zeo-auction-92pm.vercel.app](https://zeo-auction-92pm.vercel.app)
+* **Vercel Project Dashboard**: [https://vercel.com/kenji16/zeo-auction-92pm](https://vercel.com/kenji16/zeo-auction-92pm)
+* **API Gateway (Render)**: [https://zeo-api-gateway.onrender.com](https://zeo-api-gateway.onrender.com)
+
+---
+
 This document outlines the deployment architecture, hosting infrastructure, routing via the API Gateway, CI/CD pipelines, and security configurations for **ZeoAuction**.
 
 ---
 
 ## 1. System Architecture & Routing Flow
 
-ZeoAuction employs a distributed microservice architecture. The frontend Single-Page Application (SPA) never connects directly to private backend databases or internal service ports; instead, all HTTP and WebSocket requests route through a centralized **Nginx API Gateway**.
+ZeoAuction employs a distributed microservice architecture. The frontend Single-Page Application (SPA) routes all HTTP and WebSocket requests through a centralized **Nginx API Gateway**.
 
 ### High-Level Request Flow
 
 ```mermaid
-flowchart TD
-    Client["Browser / Client"]
-    SPA["React 18 + Vite SPA (Vercel)"]
-    Gateway["Nginx API Gateway (Render zeo-api-gateway)"]
-
-    subgraph BackendServices["Backend Microservices (Render)"]
-        Auth["auth-user (Port 8001)"]
-        KYC["kyc (Port 8002)"]
-        Auction["auction-orchestrator (Port 8003)"]
-        Bid["bid (Port 8004)"]
-        Pricing["pricing (Port 8005)"]
-        Payment["payment-escrow (Port 8006)"]
-        Dispute["dispute (Port 8007)"]
-        Search["search-analytics (Port 8008)"]
-        Admin["admin-moderation (Port 8009)"]
-        WS["ws-gateway (Port 8010)"]
-        Fraud["fraud-detector (Worker)"]
-        BidFlusher["bid-flusher (Worker)"]
-        EscrowSweep["escrow-sweep (Cron)"]
-    end
-
-    subgraph DataInfra["Managed Cloud Infrastructure"]
-        NeonDB[("NeonDB PostgreSQL (SSL)")]
-        UpstashRedis[("Upstash Redis (TLS)")]
-        AivenKafka[("Aiven Kafka (SASL_SSL)")]
-        SupabaseS3[("Supabase S3 Storage")]
-    end
-
-    Client -->|"HTTPS / WSS"| SPA
-    SPA -->|"API Traffic"| Gateway
-
-    Gateway -->|"auth routes"| Auth
-    Gateway -->|"kyc routes"| KYC
-    Gateway -->|"bids routes"| Bid
-    Gateway -->|"auctions routes"| Auction
-    Gateway -->|"pricing routes"| Pricing
-    Gateway -->|"orders and fees"| Payment
-    Gateway -->|"disputes routes"| Dispute
-    Gateway -->|"search routes"| Search
-    Gateway -->|"admin routes"| Admin
-    Gateway -->|"ws connection"| WS
-
-    Auth -.-> NeonDB
-    KYC -.-> NeonDB
-    Auction -.-> NeonDB
-    Payment -.-> NeonDB
-    Dispute -.-> NeonDB
-    Search -.-> NeonDB
-    Admin -.-> NeonDB
-
-    Bid -.-> UpstashRedis
-    WS -.-> UpstashRedis
-
-    Auction -.-> AivenKafka
-    Bid -.-> AivenKafka
-    BidFlusher -.-> AivenKafka
-    Fraud -.-> AivenKafka
-    Payment -.-> AivenKafka
-
-    KYC -.-> SupabaseS3
-    Auction -.-> SupabaseS3
-    Dispute -.-> SupabaseS3
+flowchart LR
+    Client["🌐 Client (Vercel)"] --> Gateway["🔀 Gateway (Render)"]
+    Gateway --> Services["⚙️ Services (Docker)"]
+    Services --> DB[("☁️ Cloud DBs")]
 ```
 
 ### Gateway Route Mapping Table
 
 The API Gateway (`infra/nginx/default.conf.template`) reverse-proxies requests according to specific prefix matches:
 
-| Incoming Path Pattern | Routed Microservice | Purpose |
+| Route Prefix | Target Service | Functionality |
 | :--- | :--- | :--- |
-| `GET /healthz`, `GET /readyz` | **Gateway Internal** | Gateway liveness and readiness probe |
-| `~ ^/api/v1/auctions/[^/]+/bids` | `bid` service | High-throughput bid submission & bid history |
-| `/api/v1/auth/` | `auth-user` service | Registration, login, JWT token refresh, Gmail OTP |
-| `/api/v1/kyc/` | `kyc` service | Aadhaar QR verification & KYC status checks |
-| `/api/v1/admin/kyc/` | `kyc` service | Admin KYC review queue & document URL signing |
-| `/api/v1/auctions/` | `auction-orchestrator` | Catalog, listing creation, image management, state transitions |
-| `/api/v1/pricing/` | `pricing` service | Real-time increment calculation & reserve validation |
-| `/api/v1/fees/`, `/api/v1/orders/` | `payment-escrow` | Invoicing, fee quotes, escrow ledger, Razorpay checkout |
-| `/api/v1/webhooks/` | `payment-escrow` | Razorpay webhook authorization & capture callbacks |
-| `/api/v1/disputes/` | `dispute` service | Buyer dispute filing, evidence attachment, resolution |
-| `/api/v1/search/` | `search-analytics` | Search indexing, catalog filtering, view tracking |
-| `/api/v1/admin/` | `admin-moderation` | Moderation queue, listing approval/rejection, user bans |
-| `/ws` | `ws-gateway` | Real-time WebSocket feed for live bids and timer countdowns |
+| `GET /healthz`, `/readyz` | **Gateway Internal** | Liveness and readiness health probes |
+| `/api/v1/auth/` | `auth-user` | Registration, login, JWT refresh, Gmail OTP |
+| `/api/v1/users/` | `auth-user` | User profiles and category preferences |
+| `/api/v1/kyc/` | `kyc` | Aadhaar Secure QR offline verification |
+| `/api/v1/admin/kyc/` | `kyc` | Admin review queue & signed document URLs |
+| `/api/v1/auctions/` | `auction-orchestrator` | Catalog, listing creation, lifecycle transitions |
+| `/api/v1/bids/` | `bid` | High-throughput bid ingestion & price lock |
+| `/api/v1/pricing/` | `pricing` | Real-time dynamic increment calculation |
+| `/api/v1/orders/`, `/fees/` | `payment-escrow` | Invoicing, fee quotes, and escrow ledger |
+| `/api/v1/webhooks/` | `payment-escrow` | Razorpay webhook signature verification |
+| `/api/v1/disputes/` | `dispute` | Buyer dispute filing and evidence uploads |
+| `/api/v1/search/` | `search-analytics` | Search indexing and catalog filtering |
+| `/api/v1/admin/` | `admin-moderation` | Moderation queue, takedowns, user bans |
+| `/ws` | `ws-gateway` | Real-time WebSocket bid & timer stream |
 
 ---
 
 ## 2. Hosting Details
 
 ### A. Frontend Application (SPA)
-* **Platform**: Vercel / Cloud CDN
+* **Platform**: Vercel
+* **Live App URL**: [zeo-auction-92pm.vercel.app](https://zeo-auction-92pm.vercel.app)
 * **Framework**: React 18, Vite, TypeScript, Tailwind CSS
 * **Build Command**: `npm run build`
 * **Output Directory**: `dist`
-* **Configuration**: Configured to point all API and WebSocket traffic directly to the deployed API Gateway URL via environment variables.
+* **Configuration**: Points all API and WebSocket traffic to the deployed API Gateway URL via environment variables.
 
 ### B. API Gateway
 * **Platform**: Render (Web Service)
@@ -145,13 +96,13 @@ The API Gateway (`infra/nginx/default.conf.template`) reverse-proxies requests a
 
 ### Live Environment Endpoints
 
-| Component | Target URL | Protocol | Notes |
+| Component | Target URL | Protocol | Role |
 | :--- | :--- | :--- | :--- |
-| **Frontend Application** | `https://zeoauction.vercel.app` *(or custom domain)* | HTTPS | Public Web Application |
-| **API Gateway** | `https://zeo-api-gateway.onrender.com` | HTTPS | Primary entry point for all REST endpoints |
-| **WebSocket Stream** | `wss://zeo-api-gateway.onrender.com/ws` | WSS | Live auction bidding and timer stream |
-| **Health Check** | `https://zeo-api-gateway.onrender.com/healthz` | HTTPS | Status code `200 OK` |
-| **Readiness Check** | `https://zeo-api-gateway.onrender.com/readyz` | HTTPS | Status code `200 OK` |
+| **Frontend Web App** | `https://zeo-auction-92pm.vercel.app` | HTTPS | Public Client on Vercel CDN |
+| **API Gateway** | `https://zeo-api-gateway.onrender.com` | HTTPS | Centralized Reverse Proxy & CORS |
+| **WebSocket Stream** | `wss://zeo-api-gateway.onrender.com/ws` | WSS | Live Auction Room Stream |
+| **Health Check** | `https://zeo-api-gateway.onrender.com/healthz` | HTTPS | Gateway Liveness Probe (200 OK) |
+| **Readiness Check** | `https://zeo-api-gateway.onrender.com/readyz` | HTTPS | Gateway Readiness Probe (200 OK) |
 
 ### Frontend Environment Configuration
 
@@ -176,79 +127,53 @@ ZEO_FEATURED_AUCTIONS=00000000-0000-4000-8000-000000000201
 
 ZeoAuction uses **GitHub Actions** (`.github/workflows/ci.yml`) for end-to-end continuous integration and automated deployment verification. Every pull request and merge to `main` executes a rigorous pipeline.
 
+### Pipeline Architecture
+
 ```mermaid
 flowchart LR
-    Lint["1. Lint (Ruff)"] --> TestLib["2. Shared Lib Tests (80% Floor)"]
-    Lint --> Contracts["3. Contract Tests (tests/contracts)"]
-    TestLib --> Services["4. Service Unit Tests (13 Services)"]
-    Services --> Images["5. Docker Build (Image validation)"]
-    Services --> E2E["6. End-to-End Tests (tests/e2e)"]
-    Services --> Compose["7. Compose Check (docker-compose config)"]
-    Lint --> Frontend["8. Frontend CI (Lint + Types + Tests)"]
-    
-    Images --> Gate["Gate Check (Branch Protection)"]
-    E2E --> Gate
-    Compose --> Gate
-    Frontend --> Gate
-    Gate --> Deploy["Automatic Deploy (Render and Vercel)"]
+    Lint["1. Lint & Audit"] --> Tests["2. Matrix Tests (80%)"] --> Build["3. Docker & Assets"] --> Gate["4. Required Gate"] --> Deploy["5. Auto Deploy"]
 ```
 
 ### Pipeline Stages
-1. **Linting (`lint`)**:
-   - Executes `ruff check .` across all Python code to enforce PEP 8, import cleanliness, and security static checks.
-2. **Shared Library (`shared-library`)**:
-   - Tests `libs/zeo-common` with an enforced **80% minimum coverage floor** (`--cov-fail-under=80`).
-3. **Consumer Contract Tests (`contracts` & `contract-tests`)**:
-   - Verifies schema compatibility between producer and consumer services (e.g. Auction $\leftrightarrow$ Bid, Payment $\leftrightarrow$ Escrow).
-4. **Service-Level Matrix Testing (`services`)**:
-   - Runs parallel pytest runners across all 13 microservices, enforcing individual 80% coverage floors.
-5. **Multi-Stage Docker Image Build (`images`)**:
-   - Validates that each service's Dockerfile builds cleanly using GitHub Actions caching (`type=gha`), preventing broken container images from merging.
-6. **Docker Compose Validation (`compose`)**:
-   - Executes `docker compose config --quiet` to ensure service dependency graphs and environment configurations remain valid.
-7. **Frontend Quality Gate (`frontend`)**:
-   - Installs dependencies, runs ESLint, verifies TypeScript types with `tsc -b`, executes Vitest unit suites, and compiles the production bundle with `npm run build`.
-8. **Required Gate (`gate`)**:
-   - Single required status check configured in GitHub branch protection rules; merges to `main` are strictly blocked if any job fails.
-9. **Continuous Deployment (CD)**:
-   - On successful merge to `main`, Render auto-deploy triggers via webhooks to update the API Gateway and backend services.
-   - Vercel automatically deploys the frontend build with instant global CDN invalidation.
+1. **Linting (`lint`)**: Executes `ruff check .` across all Python code to enforce PEP 8, import cleanliness, and security static checks.
+2. **Shared Library (`shared-library`)**: Tests `libs/zeo-common` with an enforced **80% minimum coverage floor** (`--cov-fail-under=80`).
+3. **Consumer Contract Tests (`contracts` & `contract-tests`)**: Verifies schema compatibility between producer and consumer services.
+4. **Service-Level Matrix Testing (`services`)**: Runs parallel pytest runners across all 13 microservices, enforcing individual 80% coverage floors.
+5. **Multi-Stage Docker Image Build (`images`)**: Validates that each service's Dockerfile builds cleanly using GitHub Actions caching.
+6. **Docker Compose Validation (`compose`)**: Executes `docker compose config --quiet` to ensure service dependency graphs remain valid.
+7. **Frontend Quality Gate (`frontend`)**: Installs dependencies, runs ESLint, verifies TypeScript types with `tsc -b`, executes Vitest unit suites, and compiles production bundle.
+8. **Required Gate (`gate`)**: Single required status check in GitHub branch protection; merges are strictly blocked if any job fails.
+9. **Continuous Deployment (CD)**: Render auto-deploy triggers via webhooks; Vercel deploys frontend build with global CDN invalidation.
 
 ---
 
 ## 5. Security Configurations
 
 ### A. Network Isolation & Gateway Perimeter
-- **Single Public Port Entry**: Individual backend microservices run within private subnets/isolated Docker networks. External traffic must pass through the Nginx gateway.
-- **Route Whitelisting**: Nginx explicitly routes known API prefixes (`/api/v1/...`). Any unmapped routes receive an immediate `404 Not Found` response directly from Nginx, preventing internal path traversal.
+- **Single Public Port Entry**: Microservices run within private subnets/Docker networks; external traffic must pass through the Nginx gateway.
+- **Route Whitelisting**: Nginx explicitly routes known API prefixes (`/api/v1/...`). Any unmapped routes receive an immediate `404 Not Found` directly from Nginx.
 
 ### B. Authentication & Identity Management
-- **Stateless HS256 JWTs**: Access tokens carry user identity (`sub`), user role (`buyer`, `seller`, `admin`), KYC verification status (`kyc_status`), and suspension state (`suspended`).
+- **Stateless HS256 JWTs**: Access tokens carry identity (`sub`), role (`buyer`, `seller`, `admin`), KYC status (`kyc_status`), and status (`suspended`).
 - **Short-Lived Access Tokens**: Access tokens expire in 15 minutes.
-- **Hashed Refresh Tokens**: Refresh tokens are stored in the database as SHA-256 hashes (`hash_refresh_token`). Raw tokens are never stored, preventing token reuse even in the event of database exposure.
-- **Service-to-Service Authorization**: Internal endpoints (such as order settlement triggered by auction completion) require an `INTERNAL_SERVICE_TOKEN` header verified by timing-safe string comparison.
+- **Hashed Refresh Tokens**: Refresh tokens are stored strictly as SHA-256 hashes (`hash_refresh_token`).
+- **Service Authorization**: Internal endpoints require an `INTERNAL_SERVICE_TOKEN` verified by timing-safe string comparison.
 
 ### C. Cryptographic Aadhaar QR Verification
 - **Offline Signature Check**: The KYC service performs offline verification of UIDAI Secure QR codes using UIDAI's 2048-bit RSA public key (`SHA256withRSA`).
-- **Zero Plaintext PII Storage**: Aadhaar numbers and biometric frames are never persisted unhashed. Only verification state and approved signatures are recorded.
+- **Zero Plaintext PII Storage**: Aadhaar numbers and biometric frames are never persisted unhashed. Only verification state is recorded.
 
 ### D. Data Protection & In-Transit Encryption
 - **Database (PostgreSQL)**: Connected via `sslmode=require&channel_binding=require` to NeonDB.
 - **Cache (Redis)**: Connected exclusively over TLS (`rediss://`) with password authentication.
 - **Event Bus (Kafka)**: Connected over `SASL_SSL` using `SCRAM-SHA-256` authentication.
-- **HTTPS & WSS Enforced**: All communication between the client, gateway, and backend uses TLS 1.3 / 1.2.
+- **HTTPS & WSS Enforced**: All traffic between client, gateway, and backend uses TLS 1.3 / 1.2.
 
 ### E. Payment & Webhook Security
-- **HMAC-SHA256 Signature Verification**: Every Razorpay webhook received at `/api/v1/webhooks/razorpay` is validated against `RAZORPAY_WEBHOOK_SECRET` before processing.
-- **Test Mode Key Guard**: Payment adapters reject non-test keys in development/staging environments (`rzp_test_` validation).
-- **Idempotency Keys**: All financial transactions and bid submissions enforce `Idempotency-Key` headers to prevent double-charging or duplicate bids during network retries.
+- **HMAC-SHA256 Signature Verification**: Every Razorpay webhook is validated against `RAZORPAY_WEBHOOK_SECRET` before processing.
+- **Idempotency Keys**: Financial transactions and bid submissions enforce `Idempotency-Key` headers to prevent double-charging or duplicate bids.
 
-### F. CORS & Headers
-- Gateway and FastAPI services enforce CORS origins via `CORS_ALLOW_ORIGINS`, restricting API consumption to verified frontend domains (`http://localhost:5173`, `https://zeoauction.vercel.app`).
-- Security headers configured in Nginx proxy:
-  ```nginx
-  proxy_set_header Host $host;
-  proxy_set_header X-Real-IP $remote_addr;
-  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-  proxy_set_header X-Forwarded-Proto $scheme;
-  ```
+### F. CORS & Gateway Error Shield
+- **Centralized Gateway CORS**: Handled directly at Nginx (`infra/nginx/proxy_params` and `infra/nginx/default.conf.template`).
+- **Dynamic Origin Matching**: Dynamically allows verified origins (Vercel deployments, Render services, and local development).
+- **Error Shield**: Nginx intercepts 502/503/504 errors and returns structured JSON with CORS headers instead of raw HTML error pages.

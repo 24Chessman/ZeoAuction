@@ -1,76 +1,125 @@
 # ZeoAuction
 
-A distributed real-time auction platform: microservices / SOA, built by an M.Sc. IT (Semester 3) group project team of 8.
+A high-concurrency, distributed real-time auction platform built with a microservice architecture. Sellers must pass cryptographic KYC before listing, bids are atomically sequenced under contention, watchers experience live updates over WebSockets, and winning payments are protected via an automated escrow ledger.
 
-Sellers must pass KYC before they can list. Bids are sequenced deterministically under contention. Watchers see prices live
-over WebSocket. Settlement charges a flat convenience fee and holds the funds in a **simulated** escrow for a buyer-protection
-window, and a streaming detector flags shill bidding before the auction closes.
+---
 
-> **The escrow flow is a functional simulation.** Payment runs in test mode only, and no real money is ever handled.
+## 🌐 Live Deployments
 
-## Where things are
+* **Live Web Application**: [https://zeo-auction-92pm.vercel.app](https://zeo-auction-92pm.vercel.app)
+* **Vercel Project Dashboard**: [https://vercel.com/kenji16/zeo-auction-92pm](https://vercel.com/kenji16/zeo-auction-92pm)
+* **API Gateway (Render)**: [https://zeo-api-gateway.onrender.com](https://zeo-api-gateway.onrender.com)
+* **GitHub Repository**: [https://github.com/sagar-dot-bera/ZeoAuction](https://github.com/sagar-dot-bera/ZeoAuction)
 
-| Path | What |
-|---|---|
-| `project_docs/` | Proposal, System Design Document (SDD), Jira timeline |
-| `planing/` | The 8 implementation plans (two-week windows) |
-| `services/` | 13 deployable services (10 APIs, 2 workers, 1 cron) |
-| `libs/zeo-common/` | The service template every service is created from |
-| `contracts/` | Frozen API and event contracts that services code against |
-| `infra/` | PostgreSQL schemas, Kafka and S3 storage setup, Render Kafka image |
-| `config/settlement-policy.yaml` | Fee, protection window, anti-snipe numbers |
-| `docs/` | Architecture, state machines, ADRs, conventions |
 
-## Run it locally
 
-Prerequisites: Docker Desktop (about 6 GB of RAM for the full stack), plus Python 3.11+ for the tests.
+## 🏗️ High-Level Architecture
 
-```bash
-docker compose up -d --build     # or: make up
-docker compose ps                # every service should be "healthy"
-make seed                        # development users and auctions
-make verify-db                   # proves the schema guarantees (append-only ledger, ownership...)
+```mermaid
+flowchart LR
+    Client["🌐 Client (Vercel)"] --> Gateway["🔀 Gateway (Render)"]
+    Gateway --> Services["⚙️ Services (Docker)"]
+    Services --> DB[("☁️ Cloud DBs")]
 ```
 
-| URL | What |
-|---|---|
-| http://localhost:8001 … 8012 `/healthz` | Services (see `docs/architecture.md` for the port map) |
-| http://localhost:8004/api/v1/docs | API docs of a service (here: bid) |
-| `localhost:8333` | S3 API (SeaweedFS; key `zeo-dev-access` / `zeo-dev-secret`) |
-| `localhost:5432` | PostgreSQL (`postgres` / `postgres`, database `zeoauction`) |
-| `localhost:29092` | Kafka from the host |
+* **Frontend**: React 18 Single-Page Application (SPA) built with Vite, TypeScript, and Tailwind CSS. Hosted on Vercel with global CDN invalidation.
+* **API Gateway**: Nginx reverse proxy hosted on Render terminating SSL, enforcing centralized CORS policies, upgrading WebSockets, and routing requests to private backend services.
+* **Backend Microservices**: 13 isolated Python/FastAPI services built on a shared base framework (`zeo-common`).
+* **Cloud Infrastructure**:
+  * **Database**: **NeonDB** (Serverless PostgreSQL with strict schema isolation per service).
+  * **In-Memory Lock Store**: **Upstash Redis** (Atomic price locking and idempotency tracking over TLS).
+  * **Event Bus**: **Aiven Kafka** (Deterministic sequential event streaming partitioned by auction ID).
+  * **Object Storage**: **Supabase S3** (Presigned multi-part uploads for KYC documents and listing images).
+  * **Payments**: **Razorpay** (Cryptographic webhook signatures and test-mode checkout).
 
-Schema changes only apply to a fresh database: `make reset && make up`.
+---
 
-**Windows notes:**
-- `make` isn't installed by default, so run the command listed under each target in the `Makefile`.
-- In Git Bash, prefix `docker compose exec` commands that pass container paths with `MSYS_NO_PATHCONV=1`.
-  Otherwise Git Bash rewrites `/opt/...` into a Windows path.
-- If the first `docker compose up --build` crashes Docker Desktop (13 images building in parallel), build them
-  one at a time: `for s in $(docker compose config --services); do docker compose build $s; done`.
+## ⚡ Core Features
 
-## Tests
+* **Cryptographic Seller KYC**: Sellers upload UIDAI Secure QR codes; verified offline using UIDAI's 2048-bit RSA public key (`SHA256withRSA`). Zero plaintext PII stored.
+* **Real-Time Bidding**: Sub-millisecond in-memory price locks via Redis, preventing race conditions. Bids sequenced sequentially through Kafka.
+* **Live WebSocket Rooms**: Broadcasts high bids, outbid events, and timer countdowns instantly to connected bidders.
+* **Anti-Snipe Clock Extensions**: Bids placed within the final minutes automatically extend the countdown clock by 60 seconds.
+* **Double-Entry Escrow Ledger**: Simulated append-only escrow ledger holding buyer funds through a 48-hour inspection period before automated payout.
+* **Streaming Fraud Detection**: Real-time Kafka consumer scoring bid velocity and flagging suspicious shill bidder behavior.
+
+---
+
+## 📁 Repository Structure
+
+| Directory | Description |
+| :--- | :--- |
+| `frontend/` | React 18 SPA client (Vite, TypeScript, Tailwind CSS, Lucide icons) |
+| `services/` | 13 backend microservices (10 REST APIs, 2 Kafka workers, 1 cron worker) |
+| `libs/zeo-common/` | Shared platform framework (app factory, logging, auth, DB pool, circuit breakers) |
+| `contracts/` | Machine-readable API contracts and Kafka event schemas |
+| `infra/` | Nginx gateway config, PostgreSQL initialization schemas, and Kafka scripts |
+| `docs/` | System architecture, deployment guides, and integration specifications |
+| `docker-compose.yml` | Full local development stack orchestration |
+
+---
+
+## 🚀 Running Locally
+
+### Prerequisites
+* Docker & Docker Compose
+* Python 3.11+ (for local test suites)
+* Node.js 18+ (for frontend development)
+
+### 1. Start the Full Backend Stack
+```bash
+# Clone the repository
+git clone https://github.com/sagar-dot-bera/ZeoAuction.git
+cd ZeoAuction
+
+# Launch all backend microservices and databases
+docker compose up -d --build
+
+# Verify container health
+docker compose ps
+```
+
+### 2. Start the Frontend
+```bash
+cd frontend
+npm install
+npm run dev
+```
+Open [http://localhost:5173](http://localhost:5173) in your browser.
+
+---
+
+## 🧪 Testing
 
 ```bash
-python -m venv .venv && . .venv/bin/activate      # Windows: .venv\Scripts\activate
+# Python backend unit & contract tests
 pip install ./libs/zeo-common -r requirements-dev.txt
-ruff check .
-sh scripts/test-all.sh           # shared library, contracts, every service
+pytest libs/zeo-common
+pytest services/auth-user
+
+# Frontend unit tests
+cd frontend
+npm run test
 ```
 
-CI (`.github/workflows/ci.yml`) runs the same checks on every pull request.
+---
 
-## Team
+## 📖 Extended Documentation
 
-| Member | Owns |
-|---|---|
-| Naitik | Bid Processing, Integration Testing |
-| Sumit | Auction Orchestration, Documentation, Milestones |
-| Sagar | KYC & Seller Verification, Pricing Engine, Search |
-| Harshal | Fraud Detection |
-| Jaydip | Payment, Fees & Escrow |
-| Gaurang | Frontend |
-| Jay | Dispute Management, Admin & Moderation |
-| Ayush | Auth, WebSocket Gateway, Infrastructure |
+* 📘 [Deployment, Hosting & Gateway Guide](docs/DEPLOYMENT.md): Detailed hosting configuration, Nginx routing tables, and CI/CD pipelines.
+* 📗 [System Feature & API Integration Guide](docs/SYSTEM_FEATURES_AND_INTEGRATION.md): Full breakdown of REST contracts, Kafka event schemas, and database tier design.
 
-See `docs/engineering-conventions.md` before opening your first PR.
+---
+
+## 👥 Group Project Team
+
+| Member | Domain & Ownership |
+| :--- | :--- |
+| **Naitik** | Bid Processing & Integration Testing |
+| **Sumit** | Auction Orchestration, Documentation & Milestones |
+| **Sagar** | KYC & Seller Verification, Pricing Engine, Search |
+| **Harshal** | Fraud Detection & Event Analysis |
+| **Jaydip** | Payment Integration, Fee Calculation & Escrow |
+| **Gaurang** | Frontend Architecture & User Interface |
+| **Jay** | Dispute Management & Admin Moderation |
+| **Ayush** | Authentication, WebSocket Gateway & Infrastructure |

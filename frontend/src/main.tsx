@@ -9,6 +9,10 @@ import { App } from "./app/App";
 import { setTransport } from "./lib/api/http";
 import { useMocks } from "./lib/config";
 import { mockServer, startMockActivity } from "./lib/mock";
+import { wakeRenderServices } from "./lib/renderWakeup";
+
+// Start Render cold instances as soon as a visitor loads the frontend.
+wakeRenderServices();
 
 if (useMocks) {
   setTransport(mockServer().handle);

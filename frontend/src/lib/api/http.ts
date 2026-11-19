@@ -38,8 +38,32 @@ export const fetchTransport: Transport = async (request) => {
     try {
       body = JSON.parse(text);
     } catch {
-      body = { code: "INTERNAL_ERROR", message: text, details: null };
+      // If the backend or proxy returned HTML (e.g. 502 Bad Gateway from Render/Nginx),
+      // sanitize it into a clean, friendly JSON envelope instead of leaking raw HTML to the UI.
+      const isHtml = text.trim().startsWith("<") || text.includes("<html") || text.includes("<!DOCTYPE");
+      let code = "SERVICE_UNAVAILABLE";
+      let message = "Backend service is temporarily unavailable or warming up. Please retry shortly.";
+
+      if (response.status === 404) {
+        code = "NOT_FOUND";
+        message = "The requested resource was not found.";
+      } else if (response.status === 401 || response.status === 403) {
+        code = "UNAUTHENTICATED";
+        message = "Authentication required or access denied.";
+      } else if (!isHtml && text.length < 200) {
+        message = text;
+        code = response.status >= 500 ? "SERVICE_UNAVAILABLE" : "INTERNAL_ERROR";
+      }
+
+      body = { code, message, details: null };
     }
+  } else if (!response.ok) {
+    const code = response.status >= 500 ? "SERVICE_UNAVAILABLE" : "INTERNAL_ERROR";
+    const message =
+      response.status === 502 || response.status === 503 || response.status === 504
+        ? "Backend service is warming up or temporarily unreachable. Please retry in a few moments."
+        : `Request failed with status ${response.status}`;
+    body = { code, message, details: null };
   }
   return { status: response.status, headers, body };
 };
@@ -82,15 +106,41 @@ async function send(
   try {
     return await transport({ service, method, path, headers, body });
   } catch {
-    throw new ApiError(0, { code: "NETWORK_ERROR", message: "Network request failed", details: null });
+    throw new ApiError(0, {
+      code: "NETWORK_ERROR",
+      message: "Unable to reach the server. Please check your internet connection or try again shortly.",
+      details: null,
+    });
   }
 }
 
 function toError(response: TransportResponse): ApiError {
   const envelope = response.body as Partial<ErrorEnvelope> | null;
+  let message = envelope?.message;
+
+  // Never leak raw HTML strings into ApiError
+  if (typeof message === "string" && (message.trim().startsWith("<") || message.includes("<html"))) {
+    message = "Backend service is temporarily unavailable or starting up. Please retry in a moment.";
+  }
+
+  if (!message) {
+    message =
+      response.status >= 500
+        ? "Backend service is temporarily unavailable or warming up. Please retry shortly."
+        : `Request failed (${response.status})`;
+  }
+
+  const code =
+    envelope?.code ??
+    (response.status === 502 || response.status === 503 || response.status === 504
+      ? "SERVICE_UNAVAILABLE"
+      : response.status >= 500
+      ? "INTERNAL_ERROR"
+      : "REQUEST_ERROR");
+
   return new ApiError(response.status, {
-    code: envelope?.code ?? "INTERNAL_ERROR",
-    message: envelope?.message ?? `Request failed (${response.status})`,
+    code,
+    message,
     details: envelope?.details ?? null,
     request_id: envelope?.request_id ?? null,
   });

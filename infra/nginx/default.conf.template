@@ -3,11 +3,38 @@ map $http_upgrade $connection_upgrade {
     '' close;
 }
 
+# Dynamic CORS origin mapping (Local dev, Vercel frontend, Render services)
+map $http_origin $cors_origin {
+    default "";
+    "~^https?://localhost(:[0-9]+)?$" "$http_origin";
+    "~^https?://127\.0\.0\.1(:[0-9]+)?$" "$http_origin";
+    "~^https://.*\.vercel\.app$" "$http_origin";
+    "~^https://.*\.onrender\.com$" "$http_origin";
+}
+
+log_format upstream_fmt '[$time_local] "$request" $status '
+                       'upstream=$upstream_addr status=$upstream_status '
+                       'rt=$request_time urt=$upstream_response_time '
+                       'origin="$http_origin"';
+
 server {
     listen 80;
     server_name _;
 
     client_max_body_size 10m;
+    access_log /dev/stdout upstream_fmt;
+    error_log /dev/stderr info;
+
+    # Intercept upstream 502, 503, 504 errors and return clean JSON with CORS
+    error_page 502 503 504 = @service_unavailable;
+
+    location @service_unavailable {
+        default_type application/json;
+        add_header 'Access-Control-Allow-Origin' $cors_origin always;
+        add_header 'Access-Control-Allow-Credentials' 'true' always;
+        add_header 'Access-Control-Expose-Headers' 'X-Request-ID, Idempotent-Replay' always;
+        return 503 '{"code":"SERVICE_UNAVAILABLE","message":"Backend service is temporarily unavailable or warming up. Please retry in a few seconds.","details":null}\n';
+    }
 
     location = /healthz {
         access_log off;
@@ -28,6 +55,11 @@ server {
     }
 
     location /api/v1/auth/ {
+        proxy_pass ${AUTH_USER_URL};
+        include /etc/nginx/proxy_params;
+    }
+
+    location /api/v1/users/ {
         proxy_pass ${AUTH_USER_URL};
         include /etc/nginx/proxy_params;
     }
@@ -100,6 +132,8 @@ server {
     }
 
     location / {
+        add_header 'Access-Control-Allow-Origin' $cors_origin always;
+        add_header 'Access-Control-Allow-Credentials' 'true' always;
         default_type application/json;
         return 404 '{"code":"NOT_FOUND","message":"Gateway route not found"}';
     }

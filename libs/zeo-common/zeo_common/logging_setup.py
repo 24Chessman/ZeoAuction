@@ -38,4 +38,11 @@ def configure_logging(service_name: str) -> None:
     handler.setFormatter(JsonFormatter(service_name))
     root = logging.getLogger()
     root.handlers = [handler]
-    root.setLevel(os.environ.get("LOG_LEVEL", "INFO").upper())
+    level = os.environ.get("LOG_LEVEL", "INFO").upper()
+    root.setLevel(level)
+
+    for logger_name in ("uvicorn", "uvicorn.error", "uvicorn.access", "fastapi"):
+        u_log = logging.getLogger(logger_name)
+        u_log.handlers = [handler]
+        u_log.setLevel(level)
+        u_log.propagate = False
