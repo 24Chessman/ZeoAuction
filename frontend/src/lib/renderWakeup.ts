@@ -9,6 +9,7 @@ export const renderServiceUrls = [
   "https://zeo-auction-orchestrator.onrender.com",
   "https://zeo-auth-user.onrender.com",
   "https://zeo-bid-sf8g.onrender.com",
+  "https://zeo-bid-flusher.onrender.com",
   "https://zeo-dispute.onrender.com",
   "https://zeo-kyc.onrender.com",
   "https://zeo-payment-escrow.onrender.com",
