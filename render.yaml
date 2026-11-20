@@ -176,8 +176,11 @@ services:
         value: http://zeo-auction-orchestrator:8000
       - key: PRICING_SERVICE_URL
         value: http://zeo-pricing:8000
-      - key: REPOSITORY
-        value: postgres
+      # Use the pricing engine for live increments; the default is the local-only stub.
+      - key: PRICING_MODE
+        value: http
+      - key: BID_PUBLISHER
+        value: kafka
       - key: PYTHON_ENV
         value: production
 
@@ -351,26 +354,28 @@ services:
     region: singapore
     healthCheckPath: /healthz
     envVars:
-      - key: AUTH_USER_HOST
-        value: zeo-auth-user
-      - key: KYC_HOST
-        value: zeo-kyc
-      - key: AUCTION_HOST
-        value: zeo-auction-orchestrator
-      - key: BID_HOST
-        value: zeo-bid
-      - key: PRICING_HOST
-        value: zeo-pricing
-      - key: PAYMENT_HOST
-        value: zeo-payment-escrow
-      - key: DISPUTE_HOST
-        value: zeo-dispute
-      - key: SEARCH_HOST
-        value: zeo-search-analytics
-      - key: ADMIN_HOST
-        value: zeo-admin-moderation
-      - key: WS_GATEWAY_HOST
-        value: zeo-ws-gateway
+      # infra/nginx/entrypoint.sh consumes *_URL. Host-only variables leave the
+      # rendered proxy configuration empty, including the WebSocket route.
+      - key: AUTH_USER_URL
+        value: http://zeo-auth-user:8000
+      - key: KYC_URL
+        value: http://zeo-kyc:8000
+      - key: AUCTION_URL
+        value: http://zeo-auction-orchestrator:8000
+      - key: BID_URL
+        value: http://zeo-bid:8000
+      - key: PRICING_URL
+        value: http://zeo-pricing:8000
+      - key: PAYMENT_URL
+        value: http://zeo-payment-escrow:8000
+      - key: DISPUTE_URL
+        value: http://zeo-dispute:8000
+      - key: SEARCH_URL
+        value: http://zeo-search-analytics:8000
+      - key: ADMIN_URL
+        value: http://zeo-admin-moderation:8000
+      - key: WS_GATEWAY_URL
+        value: http://zeo-ws-gateway:8000
 
   # ------------------------------------------------------------------ Frontend
 

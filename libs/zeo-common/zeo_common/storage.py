@@ -70,14 +70,18 @@ class StorageSettings:
 
     @classmethod
     def from_env(cls, default_bucket: str, *, encrypted: bool = True) -> "StorageSettings":
+        endpoint_url = env_str("S3_ENDPOINT_URL", "http://localhost:8333")
         return cls(
-            endpoint_url=env_str("S3_ENDPOINT_URL", "http://localhost:8333"),
+            endpoint_url=endpoint_url,
             # LOCAL DEVELOPMENT ONLY defaults (infra/s3/s3-identities.json).
             access_key=env_str("S3_ACCESS_KEY", "zeo-dev-access"),
             secret_key=env_str("S3_SECRET_KEY", "zeo-dev-secret"),
             bucket=env_str("S3_BUCKET", default_bucket),
             region=env_str("S3_REGION", "us-east-1"),
-            public_endpoint_url=env_str("S3_PUBLIC_ENDPOINT_URL", "http://localhost:8333"),
+            # Hosted S3 providers are normally browser-reachable at the same endpoint.
+            # A separate public endpoint is only needed for setups such as Docker where
+            # services use an internal hostname and the browser uses localhost.
+            public_endpoint_url=env_str("S3_PUBLIC_ENDPOINT_URL", endpoint_url),
             encrypted=env_bool("S3_ENCRYPTED", encrypted),
         )
 

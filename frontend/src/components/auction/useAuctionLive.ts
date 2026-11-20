@@ -47,11 +47,24 @@ export function useAuctionLive(initialAuction: Auction, initialBids: BidPage): A
   const id = initialAuction.auction_id;
   const historyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const reloadHistory = useCallback(() => {
+  const reloadHistory = useCallback((untilSeq?: number) => {
     if (historyTimer.current) clearTimeout(historyTimer.current);
-    historyTimer.current = setTimeout(() => {
-      bidApi.list(id, 1, 20).then(setBids, () => undefined);
-    }, 300);
+    let attempts = 0;
+    const poll = () => {
+      historyTimer.current = setTimeout(() => {
+        bidApi.list(id, 1, 20).then(
+          (next) => {
+            setBids(next);
+            // Accepted bids are flushed to PostgreSQL asynchronously. A single early
+            // read must not leave the history stale when the flusher is briefly delayed.
+            const newestSeq = next.items[0]?.server_seq ?? 0;
+            if (untilSeq !== undefined && newestSeq < untilSeq && attempts++ < 10) poll();
+          },
+          () => undefined,
+        );
+      }, attempts === 0 ? 300 : 500);
+    };
+    poll();
   }, [id]);
 
   const refresh = useCallback(async () => {
@@ -105,7 +118,7 @@ export function useAuctionLive(initialAuction: Auction, initialBids: BidPage): A
         setLive({ price: parseMoney(ack.current_price), minNext: parseMoney(ack.min_next_bid), seq: ack.server_seq });
         setFlash((n) => n + 1);
       }
-      reloadHistory();
+      reloadHistory(ack.server_seq);
     },
     [client, id, reloadHistory],
   );

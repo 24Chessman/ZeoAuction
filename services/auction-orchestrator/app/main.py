@@ -31,6 +31,7 @@ from zeo_common.auth import JwtSettings, install_auth
 from zeo_common.db import create_pool, postgres_check
 from zeo_common.gateway import RedisTokenVersions, TokenVersions, install_gateway
 from zeo_common.redis import create_redis, redis_check
+from zeo_common.settings import env_str
 from zeo_common.storage import InMemoryObjectStore, ObjectStore, S3ObjectStore, StorageSettings
 
 VERSION = "0.5.0"
@@ -100,7 +101,10 @@ def build_app(
         images = store
         if images is None and settings.storage == "s3":
             # listing-images isn't encrypted at rest (docs/architecture.md), but stays private.
-            images = S3ObjectStore(StorageSettings.from_env(BUCKET, encrypted=False))
+            # Deployments name this bucket separately from KYC and dispute storage. Do not
+            # silently fall back to a different default bucket when S3_BUCKET_IMAGES is set.
+            bucket = env_str("S3_BUCKET_IMAGES", env_str("S3_BUCKET", BUCKET))
+            images = S3ObjectStore(StorageSettings.from_env(bucket, encrypted=False))
         service = attach(PostgresAuctionRepository(pool), events, payment_client, images)
         timer = LifecycleTimer(service, settings.timer_interval_seconds)
         if settings.run_timer:
