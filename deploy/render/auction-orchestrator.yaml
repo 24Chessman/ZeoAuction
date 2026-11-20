@@ -10,6 +10,8 @@ services:
     envVars:
       - key: DATABASE_URL
         sync: false
+      - key: AUCTION_REPOSITORY
+        value: postgres
       - key: REDIS_URL
         sync: false
       - key: KAFKA_BOOTSTRAP_SERVERS
@@ -44,8 +46,10 @@ services:
         sync: false
       - key: S3_SECRET_KEY
         sync: false
+      - key: S3_REGION
+        sync: false
       - key: S3_BUCKET_IMAGES
-        value: auction-images
+        value: listing-images
       - key: JWT_SECRET
         sync: false
       - key: CORS_ALLOW_ORIGINS

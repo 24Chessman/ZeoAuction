@@ -158,10 +158,20 @@ services:
     envVars:
       - key: DATABASE_URL
         sync: false
+      - key: AUCTION_REPOSITORY
+        value: postgres
+      - key: AUCTION_PUBLISHER
+        value: kafka
+      - key: CONSUME_BID_EVENTS
+        value: "true"
+      - key: RUN_LIFECYCLE_TIMER
+        value: "true"
+      - key: SETTLE_ORDERS
+        value: "true"
+      - key: CONSUME_PAYMENT_EVENTS
+        value: "true"
       - key: PAYMENT_SERVICE_URL
         value: http://zeo-payment-escrow:8000
-      - key: REPOSITORY
-        value: postgres
       - key: PYTHON_ENV
         value: production
 
