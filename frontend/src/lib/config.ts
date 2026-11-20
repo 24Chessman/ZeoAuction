@@ -63,6 +63,7 @@ export const serviceUrls = {
   auction: env.ZEO_AUCTION_URL ?? env.VITE_AUCTION_URL ?? apiUrl ?? "http://localhost:8003",
   bid: env.ZEO_BID_URL ?? env.VITE_BID_URL ?? apiUrl ?? "http://localhost:8004",
   payment: env.ZEO_PAYMENT_URL ?? env.VITE_PAYMENT_URL ?? apiUrl ?? "http://localhost:8006",
+  dispute: env.ZEO_DISPUTE_URL ?? env.VITE_DISPUTE_URL ?? apiUrl ?? "http://localhost:8007",
   ws: asWebSocketUrl(rawWsUrl),
 } as const;
 

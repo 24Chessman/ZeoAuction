@@ -2,14 +2,15 @@
 
 from datetime import datetime
 from typing import Annotated, Literal
-from uuid import UUID
+from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, File, Request, UploadFile
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.domain.dispute import Dispute, DisputeEvidence
 from app.service import DisputeService
 from zeo_common.auth import CurrentPrincipal
+from zeo_common.storage import ObjectStore, StorageError
 
 router = APIRouter(prefix="/api/v1", tags=["disputes"])
 
@@ -19,6 +20,31 @@ def get_service(request: Request) -> DisputeService:
 
 
 Service = Annotated[DisputeService, Depends(get_service)]
+
+MAX_EVIDENCE_BYTES = 10 * 1024 * 1024
+PHOTO_TYPES = {
+    "image/jpeg": ("jpg", b"\xff\xd8\xff"),
+    "image/png": ("png", b"\x89PNG\r\n\x1a\n"),
+    "image/webp": ("webp", b"RIFF"),
+}
+
+
+def get_evidence_store(request: Request) -> ObjectStore:
+    return request.app.state.evidence_store
+
+
+EvidenceStore = Annotated[ObjectStore, Depends(get_evidence_store)]
+
+
+def detect_photo(data: bytes) -> tuple[str, str] | None:
+    """Return trusted content type and extension after checking the file bytes."""
+    for content_type, (extension, signature) in PHOTO_TYPES.items():
+        if not data.startswith(signature):
+            continue
+        if content_type == "image/webp" and (len(data) < 12 or data[8:12] != b"WEBP"):
+            continue
+        return content_type, extension
+    return None
 
 
 # ---------------------------------------------------------------------- Schemas
@@ -129,23 +155,20 @@ async def create_dispute(
 @router.get("/orders/{order_id}/disputes", response_model=list[DisputeView])
 async def list_order_disputes(
     order_id: UUID,
-    _: CurrentPrincipal,
+    principal: CurrentPrincipal,
     service: Service,
 ) -> list[DisputeView]:
-    disputes = await service.repo.get_by_order(order_id)
+    disputes = await service.list_order_disputes(order_id, principal.user_id, is_admin=principal.is_admin)
     return [dispute_view(d) for d in disputes]
 
 
 @router.get("/disputes/{dispute_id}", response_model=DisputeView)
 async def get_dispute(
     dispute_id: UUID,
-    _: CurrentPrincipal,
+    principal: CurrentPrincipal,
     service: Service,
 ) -> DisputeView:
-    dispute = await service.repo.get_dispute(dispute_id)
-    if not dispute:
-        from zeo_common import ApiError
-        raise ApiError("NOT_FOUND", f"Dispute {dispute_id} not found", 404)
+    dispute = await service.require_dispute_access(dispute_id, principal.user_id, is_admin=principal.is_admin)
     return dispute_view(dispute)
 
 
@@ -162,15 +185,63 @@ async def add_evidence(
         kind=body.kind,
         object_key=body.object_key,
         body=body.body,
+        is_admin=principal.is_admin,
     )
+    return evidence_view(evidence)
+
+
+@router.post("/disputes/{dispute_id}/evidence/upload", response_model=EvidenceView, status_code=201)
+async def upload_photo_evidence(
+    dispute_id: UUID,
+    principal: CurrentPrincipal,
+    service: Service,
+    store: EvidenceStore,
+    photo: UploadFile = File(...),
+) -> EvidenceView:
+    """Upload buyer/seller photo evidence into the private dispute-evidence bucket."""
+    data = await photo.read(MAX_EVIDENCE_BYTES + 1)
+    if not data:
+        from zeo_common import ApiError
+        raise ApiError("VALIDATION_ERROR", "Choose a photo to upload", 422)
+    if len(data) > MAX_EVIDENCE_BYTES:
+        from zeo_common import ApiError
+        raise ApiError("VALIDATION_ERROR", "Photos must be 10 MB or smaller", 422)
+    detected = detect_photo(data)
+    if not detected:
+        from zeo_common import ApiError
+        raise ApiError("VALIDATION_ERROR", "Use a JPEG, PNG, or WebP photo", 422)
+    content_type, extension = detected
+    key = f"disputes/{dispute_id}/{uuid4()}.{extension}"
+    try:
+        await store.put(key, data, content_type)
+    except StorageError as exc:
+        from zeo_common import ApiError
+        raise ApiError("SERVICE_UNAVAILABLE", "Evidence storage is temporarily unavailable", 503) from exc
+    try:
+        evidence = await service.add_evidence(
+            dispute_id=dispute_id,
+            submitted_by=principal.user_id,
+            kind="PHOTO",
+            object_key=key,
+            is_admin=principal.is_admin,
+        )
+    except Exception:
+        try:
+            await store.delete(key)
+        except StorageError:
+            # Preserve the original authorization/database error. A lifecycle job can
+            # remove this orphaned private object later if the store is unavailable.
+            pass
+        raise
     return evidence_view(evidence)
 
 
 @router.get("/disputes/{dispute_id}/evidence", response_model=list[EvidenceView])
 async def get_evidence(
     dispute_id: UUID,
-    _: CurrentPrincipal,
+    principal: CurrentPrincipal,
     service: Service,
 ) -> list[EvidenceView]:
+    await service.require_dispute_access(dispute_id, principal.user_id, is_admin=principal.is_admin)
     evidences = await service.repo.get_evidence(dispute_id)
     return [evidence_view(e) for e in evidences]

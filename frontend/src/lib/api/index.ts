@@ -3,7 +3,7 @@ import { toMoneyString, type Cents } from "../money";
 import { request } from "./http";
 import type {
   AdminSubmission, Auction, BidAccepted, BidPage, CheckoutSession, CreateAuction, DocumentUrl, FeeQuote,
-  FaceCheckResult, ForgotPasswordResult, KycSubmission, LedgerEntry, Order, PaymentConfirmation, Profile, QueuePage,
+  Dispute, DisputeEvidence, DisputeReasonCode, FaceCheckResult, ForgotPasswordResult, KycSubmission, LedgerEntry, Order, PaymentConfirmation, Profile, QueuePage,
   RegisterResult, ResetPasswordResult, SendGmailOtpResult, TokenPair, VerifyEmailResult,
 } from "./types";
 
@@ -130,6 +130,20 @@ export const orderApi = {
   },  /** The order's append-only escrow ledger (admins). */
   async ledger(orderId: string): Promise<LedgerEntry[]> {
     return (await request<LedgerEntry[]>("payment", "GET", `/api/v1/orders/${orderId}/ledger`, { auth: true })).data;
+  },
+};
+
+export const disputeApi = {
+  async listForOrder(orderId: string): Promise<Dispute[]> {
+    return (await request<Dispute[]>("dispute", "GET", `/api/v1/orders/${orderId}/disputes`, { auth: true })).data;
+  },
+  async create(orderId: string, body: { reason_code: DisputeReasonCode; description: string }): Promise<Dispute> {
+    return (await request<Dispute>("dispute", "POST", `/api/v1/orders/${orderId}/disputes`, { auth: true, json: body })).data;
+  },
+  async uploadPhoto(disputeId: string, photo: File): Promise<DisputeEvidence> {
+    const form = new FormData();
+    form.append("photo", photo);
+    return (await request<DisputeEvidence>("dispute", "POST", `/api/v1/disputes/${disputeId}/evidence/upload`, { auth: true, form })).data;
   },
 };
 

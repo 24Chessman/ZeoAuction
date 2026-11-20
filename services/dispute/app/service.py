@@ -47,6 +47,26 @@ class DisputeService:
         self.audit = audit_writer
         self.clock = clock
 
+    async def list_order_disputes(self, order_id: UUID, user_id: UUID, *, is_admin: bool = False) -> list[Dispute]:
+        """Return a case only to its buyer, seller, or a case administrator."""
+        order_info = await self.payment.get_order(order_id)
+        if order_info is None:
+            raise ApiError("NOT_FOUND", f"Order {order_id} not found", 404)
+        if not is_admin and user_id not in (order_info.buyer_id, order_info.seller_id):
+            raise ApiError("FORBIDDEN", "You do not have access to this order's disputes", 403)
+        return await self.repo.get_by_order(order_id)
+
+    async def require_dispute_access(self, dispute_id: UUID, user_id: UUID, *, is_admin: bool = False) -> Dispute:
+        dispute = await self.repo.get_dispute(dispute_id)
+        if dispute is None:
+            raise ApiError("NOT_FOUND", f"Dispute {dispute_id} not found", 404)
+        if is_admin:
+            return dispute
+        order_info = await self.payment.get_order(dispute.order_id)
+        if order_info is None or user_id not in (order_info.buyer_id, order_info.seller_id):
+            raise ApiError("FORBIDDEN", "You do not have access to this dispute", 403)
+        return dispute
+
     async def raise_dispute(
         self,
         order_id: UUID,
@@ -134,6 +154,7 @@ class DisputeService:
         object_key: str | None = None,
         body: str | None = None,
         bid_trace: dict[str, Any] | None = None,
+        is_admin: bool = False,
     ) -> DisputeEvidence:
         dispute = await self.repo.get_dispute(dispute_id)
         if dispute is None:
@@ -141,6 +162,16 @@ class DisputeService:
 
         if dispute.state in (DisputeState.RESOLVED_SELLER, DisputeState.RESOLVED_BUYER):
             raise ApiError("CONFLICT", "Cannot add evidence to a resolved dispute", 409)
+
+        # A buyer can add evidence to their dispute and the seller can submit a response.
+        # Administrators retain access for case management; unrelated users cannot attach files.
+        if not is_admin and submitted_by is not None:
+            order_info = await self.payment.get_order(dispute.order_id)
+            allowed = {dispute.opened_by_user_id}
+            if order_info:
+                allowed.add(order_info.seller_id)
+            if submitted_by not in allowed:
+                raise ApiError("FORBIDDEN", "You cannot add evidence to this dispute", 403)
 
         try:
             evidence = DisputeEvidence(

@@ -23,6 +23,7 @@ from zeo_common import create_app
 from zeo_common.audit import AuditWriter, InMemoryAuditWriter, PostgresAuditWriter
 from zeo_common.auth import JwtSettings, install_auth
 from zeo_common.db import create_pool, postgres_check
+from zeo_common.storage import InMemoryObjectStore, ObjectStore, S3ObjectStore, StorageSettings
 
 VERSION = "0.6.0"
 
@@ -33,6 +34,7 @@ def build_app(
     *,
     payment_client: PaymentClient | None = None,
     audit_writer: AuditWriter | None = None,
+    evidence_store: ObjectStore | None = None,
     jwt_settings: JwtSettings | None = None,
     clock: Callable[[], datetime] | None = None,
 ) -> FastAPI:
@@ -60,6 +62,7 @@ def build_app(
 
     injected = repository is not None or settings.repository == "memory"
     if injected:
+        app.state.evidence_store = evidence_store or InMemoryObjectStore("dispute-evidence")
         attach(
             repository or InMemoryDisputeRepository(),
             payment_client or InMemoryPaymentClient(),
@@ -77,10 +80,17 @@ def build_app(
             settings.payment_service_url, settings.internal_token
         )
         audit = audit_writer or PostgresAuditWriter(pool)
+        store = evidence_store or S3ObjectStore(
+            StorageSettings.from_env("dispute-evidence", encrypted=True)
+        )
+        app.state.evidence_store = store
         attach(PostgresDisputeRepository(pool), client, audit)
         try:
             yield
         finally:
+            close = getattr(store, "aclose", None)
+            if close:
+                await close()
             await pool.close()
 
     app.router.lifespan_context = lifespan

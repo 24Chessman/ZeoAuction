@@ -120,7 +120,7 @@ export function LoginPage() {
             )}
           >
             <Mail className="size-3.5" />
-            Gmail OTP
+            Email OTP
           </button>
           <button
             type="button"
@@ -171,14 +171,14 @@ export function LoginPage() {
           <form onSubmit={handleSendOtp} className="space-y-5" noValidate>
             <div className="rounded-xl border border-brand/20 bg-brand-soft/40 p-3 text-xs text-brand-ink">
               <p className="font-semibold flex items-center gap-1.5">
-                <Sparkles className="size-3.5" /> Gmail Login
+                <Sparkles className="size-3.5" /> Email OTP Login
               </p>
               <p className="mt-0.5 text-ink-muted">
-                Enter your Gmail or email address. We will send a secure 6-digit code via Gmail SMTP.
+                Enter your email address. We will send a secure 6-digit login code.
               </p>
             </div>
 
-            <Field label="Gmail or Email Address">
+            <Field label="Email address">
               {(props) => (
                 <Input
                   {...props}
@@ -188,7 +188,7 @@ export function LoginPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   leading={<Mail className="size-4" />}
-                  placeholder="you@gmail.com"
+                  placeholder="you@example.com"
                 />
               )}
             </Field>

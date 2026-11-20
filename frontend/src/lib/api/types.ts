@@ -277,6 +277,43 @@ export interface Order {
   notice: string;
 }
 
+export type DisputeReasonCode =
+  | "ITEM_NOT_RECEIVED"
+  | "NOT_AS_DESCRIBED"
+  | "DAMAGED_IN_TRANSIT"
+  | "COUNTERFEIT"
+  | "OTHER";
+
+export type DisputeState = "OPEN" | "UNDER_REVIEW" | "RESOLVED_SELLER" | "RESOLVED_BUYER";
+
+export interface Dispute {
+  id: string;
+  order_id: string;
+  opened_by: "BUYER" | "FRAUD_SERVICE";
+  opened_by_user_id: string | null;
+  fraud_alert_id: string | null;
+  reason_code: string;
+  description: string;
+  state: DisputeState;
+  fault: string | null;
+  resolution_note: string | null;
+  resolved_by: string | null;
+  resolved_at: string | null;
+  opened_at: string | null;
+  updated_at: string | null;
+}
+
+export interface DisputeEvidence {
+  id: string;
+  dispute_id: string;
+  kind: "PHOTO" | "DOCUMENT" | "BID_TRACE" | "SELLER_RESPONSE";
+  submitted_by: string | null;
+  object_key: string | null;
+  bid_trace: Record<string, unknown> | null;
+  body: string | null;
+  submitted_at: string | null;
+}
+
 /** What the browser opens Checkout with (POST /orders/{id}/checkout). */
 export interface CheckoutSession {
   order_id: string;
