@@ -25,7 +25,15 @@ services:
       - key: PAYMENT_PUBLISHER
         value: kafka
       - key: PAYMENT_ADAPTER
-        value: mock
+        value: razorpay
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false
+      - key: RAZORPAY_LINKED_ACCOUNT
+        sync: false
       - key: RUN_SETTLEMENT_WORKER
         value: "true"
       - key: INTERNAL_SERVICE_TOKEN

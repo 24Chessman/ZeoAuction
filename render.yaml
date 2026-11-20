@@ -45,6 +45,13 @@ envVarGroups:
         sync: false
       - key: RAZORPAY_KEY_SECRET
         sync: false
+      # Required by the server-side Razorpay adapter, even when Checkout's signed
+      # browser callback is the primary confirmation path.
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false
+      # Optional for checkout; required later if test payouts/transfers are exercised.
+      - key: RAZORPAY_LINKED_ACCOUNT
+        sync: false
 
   - name: zeo-storage
     envVars:
@@ -236,9 +243,11 @@ services:
     envVars:
       - key: DATABASE_URL
         sync: false
-      - key: REPOSITORY
+      - key: PAYMENT_REPOSITORY
         value: postgres
-      - key: PAYMENT_PORT
+      # Settings reads PAYMENT_ADAPTER. PAYMENT_PORT was ignored, leaving the
+      # deployed service on the mock adapter.
+      - key: PAYMENT_ADAPTER
         value: razorpay
       - key: PYTHON_ENV
         value: production

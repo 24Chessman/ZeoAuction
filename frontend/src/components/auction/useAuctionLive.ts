@@ -25,6 +25,8 @@ export interface AuctionLive {
   refresh: () => Promise<void>;
 }
 
+const RECONNECT_REFRESH_MS = 5_000;
+
 function fromHistory(auction: Auction, bids: BidPage): LivePrice {
   const top = bids.items[0];
   const price = top ? parseMoney(top.amount) : null;
@@ -99,6 +101,31 @@ export function useAuctionLive(initialAuction: Auction, initialBids: BidPage): A
     // Subscribe once per auction; live.seq at mount is the starting point.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, id]);
+
+  // A WebSocket is the fast path, but Render can take a few seconds to wake a cold
+  // gateway. Keep the page truthful during that window: REST reconciliation picks up
+  // new persisted bids, an auction close, and the order/payment panel without requiring
+  // the buyer to reload the browser manually.
+  useEffect(() => {
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const stop = () => {
+      if (timer !== null) clearInterval(timer);
+      timer = null;
+    };
+    const start = () => {
+      if (timer !== null) return;
+      void refresh().catch(() => undefined);
+      timer = setInterval(() => void refresh().catch(() => undefined), RECONNECT_REFRESH_MS);
+    };
+    const unsubscribe = client.onStatus((info) => {
+      if (info.status === "reconnecting" || info.status === "offline") start();
+      else stop();
+    });
+    return () => {
+      unsubscribe();
+      stop();
+    };
+  }, [client, refresh]);
 
   // When the countdown passes, ask the server what happened rather than guessing.
   useEffect(() => {
