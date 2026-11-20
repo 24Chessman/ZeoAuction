@@ -54,6 +54,14 @@ server {
         include /etc/nginx/proxy_params;
     }
 
+    # Payment owns the per-auction order resource. This must appear before the
+    # generic auction route below, otherwise Nginx proxies it to Orchestration
+    # and callers see a misleading 404 even when the invoice exists.
+    location ~ ^/api/v1/auctions/[^/]+/order(?:/|$) {
+        proxy_pass ${PAYMENT_URL};
+        include /etc/nginx/proxy_params;
+    }
+
     location /api/v1/auth/ {
         proxy_pass ${AUTH_USER_URL};
         include /etc/nginx/proxy_params;
