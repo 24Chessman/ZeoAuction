@@ -18,6 +18,7 @@ from zeo_common.auth import JwtSettings, install_auth
 from zeo_common.db import create_pool, postgres_check
 from zeo_common.gateway import RedisTokenVersions, TokenVersionPublisher
 from zeo_common.redis import create_redis, redis_check
+from zeo_common.settings import env_str
 from zeo_common.storage import InMemoryObjectStore, ObjectStore, S3ObjectStore, StorageSettings
 
 VERSION = "0.5.0"
@@ -73,7 +74,8 @@ def build_app(
         if store is not None:
             objects = store
         elif settings.storage == "s3":
-            objects = S3ObjectStore(StorageSettings.from_env(BUCKET))
+            bucket = env_str("S3_BUCKET_KYC", env_str("S3_BUCKET", BUCKET))
+            objects = S3ObjectStore(StorageSettings.from_env(bucket))
         else:
             objects = InMemoryObjectStore(BUCKET)
         attach(PostgresKycRepository(pool), objects, token_versions or RedisTokenVersions(redis))
