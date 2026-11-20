@@ -9,20 +9,11 @@ import { formatMoney, parseMoney } from "@/lib/money";
 import { CheckoutDismissed, payWithRazorpay } from "@/lib/payments/razorpay";
 import { policy } from "@/lib/policy";
 import { useAsync } from "@/lib/useAsync";
-import { Badge, Banner, Button, Card, CardBody, CardHeader, Divider, Modal, Table, Td, Th, type Tone, useToast } from "@/components/ui";
+import { Badge, Banner, Button, Card, CardBody, CardHeader, Divider, Modal, Table, Td, Th, useToast } from "@/components/ui";
+import { DisputeAction } from "./OrdersCard";
+import { ORDER_LABEL } from "./orderLabels";
 
-export const ORDER_LABEL: Record<OrderState, { label: string; tone: Tone }> = {
-  INVOICED: { label: "Awaiting payment", tone: "info" },
-  AUTHORIZED: { label: "Payment authorised", tone: "info" },
-  AWAITING_CAPTURE_RETRY: { label: "Capturing payment", tone: "info" },
-  CAPTURED: { label: "Captured", tone: "positive" },
-  IN_ESCROW: { label: "Held in escrow", tone: "positive" },
-  SHIPPED: { label: "Shipped", tone: "positive" },
-  DISPUTED: { label: "Disputed", tone: "danger" },
-  RELEASED: { label: "Released to seller", tone: "positive" },
-  REFUNDED: { label: "Refunded", tone: "neutral" },
-  CANCELLED: { label: "Cancelled", tone: "danger" },
-};
+export { ORDER_LABEL } from "./orderLabels";
 
 function newKey(): string {
   return `pay-${crypto.randomUUID()}`;
@@ -145,6 +136,7 @@ export function SettlementPanel({ auction, onSettled }: { auction: Auction; onSe
             shipping if there's no dispute.
           </Banner>
         )}
+        {isBuyer && <DisputeAction order={order} />}
         {order.state === "CANCELLED" && (
           <Banner tone="danger" title="Order cancelled">
             The payment wasn't completed (declined, or not made in time). The invoice was voided and nothing was charged.

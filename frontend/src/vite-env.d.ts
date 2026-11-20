@@ -11,6 +11,7 @@ interface ImportMetaEnv {
   readonly ZEO_AUCTION_URL?: string;
   readonly ZEO_BID_URL?: string;
   readonly ZEO_PAYMENT_URL?: string;
+  readonly ZEO_DISPUTE_URL?: string;
   readonly ZEO_WS_URL?: string;
 
   readonly VITE_USE_MOCKS?: string;
@@ -23,6 +24,7 @@ interface ImportMetaEnv {
   readonly VITE_AUCTION_URL?: string;
   readonly VITE_BID_URL?: string;
   readonly VITE_PAYMENT_URL?: string;
+  readonly VITE_DISPUTE_URL?: string;
   readonly VITE_WS_URL?: string;
 }
 
