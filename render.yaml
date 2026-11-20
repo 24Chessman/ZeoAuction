@@ -385,6 +385,12 @@ services:
     buildCommand: npm ci && npm run build
     staticPublishPath: frontend/dist
     rootDir: frontend
+    # React Router handles auction detail URLs in the browser. Without this rewrite,
+    # refreshing /auctions/<id> asks the static host for a file at that path and 404s.
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
     envVars:
       - key: VITE_USE_MOCKS
         value: "false"

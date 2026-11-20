@@ -44,15 +44,25 @@ const rawApiUrl =
   env.VITE_API_URL;
 const apiUrl = rawApiUrl ? rawApiUrl.replace(/\/+$/, "") : undefined;
 
+/** A WebSocket constructor accepts ws/wss only. Accept an HTTPS gateway URL in the
+ * deployment environment too, and convert it to its secure WebSocket equivalent. */
+function asWebSocketUrl(url: string): string {
+  if (url.startsWith("https://")) return `wss://${url.slice("https://".length)}`;
+  if (url.startsWith("http://")) return `ws://${url.slice("http://".length)}`;
+  return url;
+}
+
+const rawWsUrl =
+  env.ZEO_WS_URL ??
+  env.VITE_WS_URL ??
+  (apiUrl ? `${apiUrl.replace(/^http/, "ws")}/ws` : "ws://localhost:8010/ws");
+
 export const serviceUrls = {
   auth: env.ZEO_AUTH_URL ?? env.VITE_AUTH_URL ?? apiUrl ?? "http://localhost:8001",
   kyc: env.ZEO_KYC_URL ?? env.VITE_KYC_URL ?? apiUrl ?? "http://localhost:8002",
   auction: env.ZEO_AUCTION_URL ?? env.VITE_AUCTION_URL ?? apiUrl ?? "http://localhost:8003",
   bid: env.ZEO_BID_URL ?? env.VITE_BID_URL ?? apiUrl ?? "http://localhost:8004",
   payment: env.ZEO_PAYMENT_URL ?? env.VITE_PAYMENT_URL ?? apiUrl ?? "http://localhost:8006",
-  ws:
-    env.ZEO_WS_URL ??
-    env.VITE_WS_URL ??
-    (apiUrl ? `${apiUrl.replace(/^http/, "ws")}/ws` : "ws://localhost:8010/ws"),
+  ws: asWebSocketUrl(rawWsUrl),
 } as const;
 

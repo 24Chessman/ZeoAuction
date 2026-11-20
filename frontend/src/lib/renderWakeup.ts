@@ -9,6 +9,7 @@ export const renderServiceUrls = [
   "https://zeo-auction-orchestrator.onrender.com",
   "https://zeo-auth-user.onrender.com",
   "https://zeo-bid-sf8g.onrender.com",
+  "https://zeo-bid-flusher.onrender.com",
   "https://zeo-dispute.onrender.com",
   "https://zeo-kyc.onrender.com",
   "https://zeo-payment-escrow.onrender.com",
@@ -16,6 +17,10 @@ export const renderServiceUrls = [
   "https://zeo-search-analytics-8fxi.onrender.com",
   "https://zeo-ws-gateway-0kwu.onrender.com",
 ] as const;
+
+/** Render free instances sleep after inactivity. Ten minutes keeps the active page's
+ * live-price gateway warm without delaying the UI or issuing a high-volume heartbeat. */
+export const RENDER_WAKE_INTERVAL_MS = 10 * 60 * 1_000;
 
 /** Sends a non-blocking request to each deployed Render service. */
 export function wakeRenderServices(fetcher: typeof fetch = fetch): void {
@@ -31,4 +36,10 @@ export function wakeRenderServices(fetcher: typeof fetch = fetch): void {
       // Warming services commonly time out; the application's normal API flow handles retries.
     });
   }
+}
+
+/** Keep deployed dependencies awake for as long as this browser tab remains open. */
+export function scheduleRenderWakeups(): () => void {
+  const timer = window.setInterval(wakeRenderServices, RENDER_WAKE_INTERVAL_MS);
+  return () => window.clearInterval(timer);
 }
